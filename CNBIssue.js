@@ -13,6 +13,7 @@
 // @grant        GM_setValue
 // @connect      api.cnb.cool
 // @connect      cnb.cool
+// @license MIT
 // ==/UserScript==
 
 (function() {
