@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.1.2
+// @version      1.1.3
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -123,6 +123,14 @@
         }
         .cnb-issue-btn-cancel:hover {
             background: #5a6268;
+        }
+        /* 新增：创建完成Issue 按钮样式（绿色） */
+        .cnb-issue-btn-done {
+            background: #28a745;
+            color: white;
+        }
+        .cnb-issue-btn-done:hover {
+            background: #218838;
         }
         .cnb-issue-overlay {
             position: fixed;
@@ -311,7 +319,10 @@
         .cnb-issue-btn-confirm:hover { background: #0256b9 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
         .cnb-issue-btn-cancel { background: #6c757d !important; color: #fff !important; }
         .cnb-issue-btn-cancel:hover { background: #5a6268 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
-        .cnb-issue-btn-confirm:active, .cnb-issue-btn-cancel:active { transform: translateY(1px) scale(0.98) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important; }
+        /* 新增：创建完成Issue 按钮（绿色） */
+        .cnb-issue-btn-done { background: #28a745 !important; color: #fff !important; }
+        .cnb-issue-btn-done:hover { background: #218838 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
+        .cnb-issue-btn-confirm:active, .cnb-issue-btn-cancel:active, .cnb-issue-btn-done:active { transform: translateY(1px) scale(0.98) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important; }
 
         /* 标签选择按钮 */
         #cnb-issue-tags { margin-top: 6px !important; }
@@ -908,6 +919,7 @@ ${escapeHtml(selectedContent)}</textarea>
             </div>
             <div class="cnb-issue-dialog-buttons">
                 <button class="cnb-issue-btn-cancel">取消</button>
+                <button class="cnb-issue-btn-done">创建完成Issue</button>
                 <button class="cnb-issue-btn-confirm">创建Issue</button>
             </div>
         `;
@@ -946,6 +958,7 @@ ${escapeHtml(selectedContent)}</textarea>
         }
         const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
         const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
+        const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
 
         const closeDialog = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -975,6 +988,44 @@ ${escapeHtml(selectedContent)}</textarea>
                 }
             });
         });
+
+        if (doneBtn) {
+            doneBtn.addEventListener('click', () => {
+                const title = dialog.querySelector('#cnb-issue-title').value;
+                const content = dialog.querySelector('#cnb-issue-content').value;
+                const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
+
+                doneBtn.disabled = true;
+                confirmBtn.disabled = true;
+                doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建并完成中...';
+
+                createIssue(title, content, labels, (success, issueId) => {
+                    if (success && issueId != null) {
+                        closeIssue(issueId, 'completed', (ok) => {
+                            if (!ok) {
+                                doneBtn.disabled = false;
+                                confirmBtn.disabled = false;
+                                doneBtn.innerHTML = '创建完成Issue';
+                                return;
+                            }
+                            if (typeof GM_notification === 'function') {
+                                GM_notification({
+                                    text: 'Issue已标记为已完成（closed: completed）',
+                                    title: 'CNB Issue工具',
+                                    timeout: 3000
+                                });
+                            }
+                            if (document.body.contains(overlay)) document.body.removeChild(overlay);
+                            if (document.body.contains(dialog)) document.body.removeChild(dialog);
+                        });
+                    } else {
+                        doneBtn.disabled = false;
+                        confirmBtn.disabled = false;
+                        doneBtn.innerHTML = '创建完成Issue';
+                    }
+                });
+            });
+        }
 
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
@@ -1233,7 +1284,7 @@ ${escapeHtml(selectedContent)}</textarea>
                             title: 'CNB Issue工具',
                             timeout: 3000
                         });
-                        if (callback) callback(true);
+                        if (callback) callback(true, issueId);
                     };
 
                     // 若有标签，则单独 PUT 标签
@@ -1264,7 +1315,7 @@ ${escapeHtml(selectedContent)}</textarea>
                                         title: 'CNB Issue工具',
                                         timeout: 5000
                                     });
-                                    if (callback) callback(true);
+                                    if (callback) callback(true, issueId);
                                 }
                             },
                             onerror: function() {
@@ -1273,7 +1324,7 @@ ${escapeHtml(selectedContent)}</textarea>
                                     title: 'CNB Issue工具',
                                     timeout: 5000
                                 });
-                                if (callback) callback(true);
+                                if (callback) callback(true, issueId);
                             }
                         });
                     } else {
@@ -1305,6 +1356,58 @@ ${escapeHtml(selectedContent)}</textarea>
                     timeout: 5000
                 });
                 if (callback) callback(false);
+            }
+        });
+    }
+
+    // 关闭Issue（设置为 closed，state_reason=completed）
+    function closeIssue(issueId, stateReason = 'completed', callback) {
+        if (issueId == null) {
+            if (typeof callback === 'function') callback(false);
+            return;
+        }
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueId}`;
+        GM_xmlhttpRequest({
+            method: 'PATCH',
+            url,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `${CONFIG.accessToken}`,
+                'Accept': 'application/json'
+            },
+            data: JSON.stringify({
+                state: 'closed',
+                state_reason: stateReason
+            }),
+            responseType: 'json',
+            onload: function(res) {
+                if (res.status >= 200 && res.status < 300) {
+                    if (typeof callback === 'function') callback(true);
+                } else {
+                    let msg = `HTTP ${res.status}`;
+                    try {
+                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
+                        if (err?.message) msg = err.message;
+                    } catch (_) {}
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: `标记完成失败：${msg}`,
+                            title: 'CNB Issue工具',
+                            timeout: 5000
+                        });
+                    }
+                    if (typeof callback === 'function') callback(false);
+                }
+            },
+            onerror: function() {
+                if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        text: `网络请求失败（关闭Issue）`,
+                        title: 'CNB Issue工具',
+                        timeout: 5000
+                    });
+                }
+                if (typeof callback === 'function') callback(false);
             }
         });
     }
