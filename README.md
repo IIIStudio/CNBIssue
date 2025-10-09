@@ -36,3 +36,15 @@
 **标签是需要你在 -/labels 管理标签中先设置好**，然后在设置中输入标签然后回车，这样就可以使用了
 
 然后点击 创建Issue
+
+## 其他玩法
+
+创建一个数据集
+
+数据范围*
+IIIStudio/Demo
+
+例如：https://cnb.cool/IIIStudio/DemoPP
+
+通过筛选标签分类。
+
