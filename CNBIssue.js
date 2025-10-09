@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         CNB Issue 区域选择工具 (Markdown版)
+// @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.1
+// @version      1.1.1
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
