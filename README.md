@@ -16,7 +16,7 @@
 
 项目预览：https://api.nocode.host
 
-**演示效果：https://cnb.cool/IIIStudio/Demo/-/issues**
+**演示效果：https://cnb.cool/IIIStudio/Demo/-/issues?q=state%3Aclosed**
 
 ## 更新日志
 - ### 1.2.2
