@@ -1,18 +1,19 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具 (Markdown版)
 // @namespace    http://tampermonkey.net/
-// @version      1.0
+// @version      1.1
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_notification
 // @grant        GM_setClipboard
- // @grant        GM_addStyle
- // @grant        GM_getValue
- // @grant        GM_setValue
+// @grant        GM_addStyle
+// @grant        GM_getValue
+// @grant        GM_setValue
 // @connect      api.cnb.cool
 // @connect      cnb.cool
+// @license MIT
 // ==/UserScript==
 
 (function() {
@@ -25,6 +26,10 @@
         accessToken: '',
         issueEndpoint: '/-/issues'
     };
+    let SAVED_TAGS = [];
+    // 选择模式快捷键（可在设置中修改），规范格式如：Shift+E
+    let START_HOTKEY = 'Shift+E';
+    let HOTKEY_ENABLED = false;
 
     // 添加自定义样式
     GM_addStyle(`
@@ -96,12 +101,14 @@
             gap: 10px;
             margin-top: 15px;
         }
-        .cnb-issue-dialog button {
+        /* 仅底部操作按钮生效，避免影响设置区的小按钮与“×” */
+        .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
             padding: 8px 16px;
             border: none;
             border-radius: 4px;
             cursor: pointer;
             font-size: 14px;
+            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
         }
         .cnb-issue-btn-confirm {
             background: #0366d6;
@@ -178,6 +185,68 @@
         }
     `);
 
+    /* 左侧贴边 Dock 控制栏（自动隐藏，悬停显示） */
+    GM_addStyle(`
+        .cnb-dock {
+            position: fixed;
+            left: 0;
+            top: 40%;
+            transform: translateX(-88%);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px 8px 8px 12px; /* 左侧保留把手可点区域 */
+            background: rgba(255,255,255,0.95);
+            border: 1px solid #d0d7de;
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            z-index: 10002;
+            transition: transform .2s ease, opacity .2s ease;
+            opacity: 0.95;
+        }
+        .cnb-dock:hover,
+        .cnb-dock.cnb-dock--visible {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        .cnb-dock .cnb-dock-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 72px;
+            height: 32px;
+            padding: 0 10px;
+            font-size: 13px;
+            color: #24292f;
+            background: #f6f8fa;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+        }
+        .cnb-dock .cnb-dock-btn:hover {
+            background: #eef2f6;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+        }
+        .cnb-dock .cnb-dock-btn:active {
+            transform: translateY(1px);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+        }
+        /* 左侧把手提示条 */
+        .cnb-dock::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 12px;
+            width: 10px;
+            height: calc(100% - 24px);
+            background: linear-gradient(180deg, #e9ecef, #dde2e7);
+            border-right: 1px solid #d0d7de;
+            border-radius: 0 6px 6px 0;
+        }
+    `);
+
     // 追加设置按钮样式
     GM_addStyle(`
         .cnb-issue-settings-btn {
@@ -200,6 +269,204 @@
         .cnb-issue-settings-btn:hover {
             background: #5a6268;
             transform: scale(1.05);
+        }
+    `);
+
+    /* 强制隔离并统一控件样式，避免继承站点样式 */
+    GM_addStyle(`
+        .cnb-issue-dialog input.cnb-control,
+        .cnb-issue-dialog textarea.cnb-control {
+            box-sizing: border-box !important;
+            width: 100% !important;
+            margin: 10px 0 !important;
+            padding: 8px 10px !important;
+            border: 1px solid #ccc !important;
+            border-radius: 4px !important;
+            background: #fff !important;
+            color: #222 !important;
+            font: normal 14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif !important;
+            outline: none !important;
+            appearance: none !important;
+            -webkit-appearance: none !important;
+            -moz-appearance: none !important;
+        }
+        .cnb-issue-dialog textarea.cnb-control {
+            min-height: 300px !important;
+            resize: vertical !important;
+            font-family: 'Monaco','Menlo','Ubuntu Mono',monospace !important;
+            font-size: 12px !important;
+            line-height: 1.4 !important;
+        }
+        /* 仅底部操作按钮生效，避免影响设置区的小按钮与“×”
+           不设置背景和颜色，让各自类（confirm/cancel）决定配色与 hover */
+        .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
+            padding: 8px 16px !important;
+            border: none !important;
+            border-radius: 4px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
+        }
+        .cnb-issue-btn-confirm { background: #0366d6 !important; color: #fff !important; }
+        .cnb-issue-btn-confirm:hover { background: #0256b9 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
+        .cnb-issue-btn-cancel { background: #6c757d !important; color: #fff !important; }
+        .cnb-issue-btn-cancel:hover { background: #5a6268 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
+        .cnb-issue-btn-confirm:active, .cnb-issue-btn-cancel:active { transform: translateY(1px) scale(0.98) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important; }
+
+        /* 标签选择按钮 */
+        #cnb-issue-tags { margin-top: 6px !important; }
+        .cnb-tag-btn {
+            margin: 4px !important;
+            padding: 4px 10px !important;
+            border: 1px solid #ccc !important;
+            border-radius: 16px !important;
+            background: #f8f9fa !important;
+            color: #222 !important;
+            font-size: 13px !important;
+            cursor: pointer !important;
+        }
+        .cnb-tag-btn.active {
+            background: #0366d6 !important;
+            border-color: #0256b9 !important;
+            color: #fff !important;
+        }
+
+        /* 设置页：标签胶囊与删除按钮 */
+        .cnb-tags-list { margin-top: 8px !important; }
+        .cnb-tag-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            margin: 4px !important;
+            padding: 4px 10px !important;
+            border: 1px solid #d0d7de !important;
+            border-radius: 9999px !important;
+            background: #fff !important;
+            color: #24292f !important;
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            white-space: nowrap !important;
+            vertical-align: middle !important;
+            box-shadow: 0 1px 0 rgba(27,31,36,0.04) !important;
+            transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease !important;
+            user-select: none !important;
+        }
+        .cnb-tag-delbtn {
+            /* 与通用按钮样式彻底隔离，保持小矩形，仅比“×”略大 */
+            margin-left: 4px !important;
+            border: none !important;
+            background: transparent !important;
+            cursor: pointer !important;
+            color: #666 !important;
+            font-size: 14px !important;
+
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+
+            height: 20px !important;
+            padding: 0 6px !important;
+            line-height: 20px !important;
+            border-radius: 4px !important;
+
+            box-sizing: border-box !important;
+            white-space: nowrap !important;
+            min-width: 0 !important; /* 防止被通用按钮样式撑宽 */
+        }
+        .cnb-tag-pill:hover {
+            background: #f6f8fa !important;
+            border-color: #afb8c1 !important;
+            box-shadow: 0 1px 0 rgba(27,31,36,0.06) !important;
+        }
+        .cnb-tag-delbtn:hover {
+            color: #cf222e !important;
+            background: #ffeef0 !important;
+        }
+        .cnb-tag-delbtn:active {
+            background: #ffdce0 !important;
+        }
+
+        /* 设置页：输入与按钮排列 */
+        .cnb-flex {
+            display: flex !important;
+            gap: 8px !important;
+            align-items: center !important;
+            flex-wrap: nowrap !important;          /* 一行展示，禁止换行 */
+        }
+        .cnb-tag-addbtn {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            white-space: nowrap !important;
+
+            height: 36px !important;          /* 与输入框等高 */
+            padding: 0 12px !important;
+            box-sizing: border-box !important;
+
+            border-radius: 4px !important;
+            border: none !important;
+            background: #28a745 !important;
+            color: #fff !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+
+            flex: 0 0 auto !important;        /* 按钮不被压缩，不换行 */
+            min-width: max-content !important; /* 宽度随文字自适应，避免“添加标/签” */
+        }
+        .cnb-tag-addbtn:hover { background: #218838 !important; }
+
+        /* 让输入框可伸缩并等高 */
+        .cnb-flex .cnb-control#cnb-setting-newtag {
+            height: 36px !important;
+            flex: 1 1 auto !important;
+        }
+
+        /* 提示文本 */
+        .cnb-hint {
+            color: #666 !important;
+            font-size: 12px !important;
+        }
+
+        /* 开关样式（无文字，仅图形） */
+        .cnb-switch {
+            position: relative !important;
+            display: inline-block !important;
+            width: 42px !important;
+            height: 22px !important;
+            vertical-align: middle !important;
+        }
+        .cnb-switch input {
+            opacity: 0 !important;
+            width: 0 !important;
+            height: 0 !important;
+            position: absolute !important;
+        }
+        .cnb-switch-slider {
+            position: absolute !important;
+            inset: 0 !important;
+            background: #c7ccd1 !important;
+            border-radius: 9999px !important;
+            transition: background-color .15s ease !important;
+            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06) !important;
+            cursor: pointer !important;
+        }
+        .cnb-switch-slider::before {
+            content: '' !important;
+            position: absolute !important;
+            left: 2px !important;
+            top: 2px !important;
+            width: 18px !important;
+            height: 18px !important;
+            background: #fff !important;
+            border-radius: 50% !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+            transition: transform .15s ease !important;
+        }
+        .cnb-switch input:checked + .cnb-switch-slider {
+            background: #28a745 !important;
+        }
+        .cnb-switch input:checked + .cnb-switch-slider::before {
+            transform: translateX(20px) !important;
         }
     `);
 
@@ -281,7 +548,8 @@
                     return `\`${childrenContent}\``;
                 case 'pre':
                     const language = node.querySelector('code')?.className?.replace('language-', '') || '';
-                    return `\`\`\`${language}\n${childrenContent}\n\`\`\`\n\n`;
+                    const raw = node.textContent || '';
+                    return `\`\`\`${language}\n${raw}\n\`\`\`\n\n`;
                 case 'a':
                     const href = node.getAttribute('href') || '';
                     if (href) {
@@ -349,102 +617,101 @@
                 .replace(/!/g, '\\!')
                 .replace(/\|/g, '\\|')
                 .replace(/\n\s*\n/g, '\n\n')
-                .replace(/\s+/g, ' ')
+                .replace(/[ \t]+/g, ' ')
                 .trim();
         }
     };
 
-    // 创建悬浮按钮（可拖动）+ 设置按钮
-    function createFloatingButton() {
-        const btn = document.createElement('button');
-        btn.className = 'cnb-issue-floating-btn';
-        btn.innerHTML = '📝';
-        btn.title = '选择页面区域创建CNB Issue (Markdown格式)';
-
-        const setBtn = document.createElement('button');
-        setBtn.className = 'cnb-issue-settings-btn';
-        setBtn.innerHTML = '⚙️';
-        setBtn.title = '设置 CNB 仓库与 Token';
-
-        document.body.appendChild(btn);
-        document.body.appendChild(setBtn);
-
-        // 初始位置（读取存储，没有则右上角）
-        const savedPos = (typeof GM_getValue === 'function') ? GM_getValue('btnPos', null) : null;
-        const startTop = savedPos?.top ?? 20;
-        const startLeft = savedPos?.left ?? (window.innerWidth - 70);
-        positionButtons(startLeft, startTop);
-
-        // 拖拽逻辑
-        let dragging = false;
-        let moved = false;
-        let startX = 0, startY = 0;
-        let origLeft = 0, origTop = 0;
-
-        btn.addEventListener('mousedown', (e) => {
-            dragging = true;
-            moved = false;
-            startX = e.clientX;
-            startY = e.clientY;
-            const rect = btn.getBoundingClientRect();
-            origLeft = rect.left;
-            origTop = rect.top;
+    // 热键工具：规范化与匹配
+    function normalizeHotkeyString(s) {
+        if (!s) return '';
+        return s.split('+').map(p => p.trim()).filter(Boolean).map(p => {
+            const up = p.toLowerCase();
+            if (up === 'ctrl') return 'Control';
+            if (up === 'control') return 'Control';
+            if (up === 'meta' || up === 'cmd' || up === 'command') return 'Meta';
+            if (up === 'alt' || up === 'option') return 'Alt';
+            if (up === 'shift') return 'Shift';
+            if (up.length === 1) return up.toUpperCase();
+            // 常见功能键统一首字母大写
+            return p[0].toUpperCase() + p.slice(1);
+        }).join('+');
+    }
+    function toDisplayHotkeyString(s) {
+        if (!s) return '';
+        return s.replace(/\bControl\b/g, 'Ctrl');
+    }
+    function eventToHotkeyString(e) {
+        const parts = [];
+        if (e.ctrlKey) parts.push('Control');
+        if (e.shiftKey) parts.push('Shift');
+        if (e.altKey) parts.push('Alt');
+        if (e.metaKey) parts.push('Meta');
+        let key = e.key;
+        if (!key) return parts.join('+');
+        // 忽略纯修饰键
+        if (['Control','Shift','Alt','Meta'].includes(key)) key = '';
+        // 统一字母为大写，功能键保持名称
+        if (key && key.length === 1) key = key.toUpperCase();
+        if (key === ' ') key = 'Space';
+        if (key === 'Esc') key = 'Escape';
+        if (key === 'ArrowLeft' || key === 'ArrowRight' || key === 'ArrowUp' || key === 'ArrowDown') {
+            // 保持不变
+        }
+        return parts.concat(key ? [key] : []).join('+');
+    }
+    function matchesHotkey(e, hotkeyStr) {
+        const want = normalizeHotkeyString(hotkeyStr);
+        const got = eventToHotkeyString(e);
+        return want && got === want;
+    }
+    function isEditableTarget(el) {
+        if (!el) return false;
+        const tag = el.tagName ? el.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+        if (el.isContentEditable) return true;
+        return false;
+    }
+    function globalHotkeyHandler(e) {
+        // 避免在输入编辑时触发；对话框/遮罩存在时也不触发
+        if (!HOTKEY_ENABLED) return;
+        if (isEditableTarget(e.target)) return;
+        if (document.querySelector('.cnb-issue-dialog') || document.querySelector('.cnb-issue-overlay')) return;
+        if (!isSelecting && matchesHotkey(e, START_HOTKEY)) {
             e.preventDefault();
-        });
+            startAreaSelection();
+        }
+    }
 
-        document.addEventListener('mousemove', (e) => {
-            if (!dragging) return;
-            const dx = e.clientX - startX;
-            const dy = e.clientY - startY;
-            if (Math.abs(dx) > 2 || Math.abs(dy) > 2) moved = true;
-            let newLeft = origLeft + dx;
-            let newTop = origTop + dy;
-            // 边界限制
-            const margin = 10;
-            const maxLeft = window.innerWidth - btn.offsetWidth - margin;
-            const maxTop = window.innerHeight - btn.offsetHeight - margin;
-            newLeft = Math.max(margin, Math.min(maxLeft, newLeft));
-            newTop = Math.max(margin, Math.min(maxTop, newTop));
-            positionButtons(newLeft, newTop);
-        });
+    // 创建左侧 Dock（去除拖动，仅点击）
+    function createFloatingButton() {
+        const dock = document.createElement('div');
+        dock.className = 'cnb-dock';
+        dock.title = '悬停展开，移开隐藏';
 
-        document.addEventListener('mouseup', () => {
-            if (!dragging) return;
-            dragging = false;
-            // 保存位置
-            const rect = btn.getBoundingClientRect();
-            if (typeof GM_setValue === 'function') {
-                GM_setValue('btnPos', { left: rect.left, top: rect.top });
-            }
-        });
-
-        // 点击（区分拖拽）
-        btn.addEventListener('click', (e) => {
-            if (moved) {
-                e.preventDefault();
-                return;
-            }
+        const btnSelect = document.createElement('button');
+        btnSelect.className = 'cnb-dock-btn';
+        btnSelect.textContent = '选择';
+        btnSelect.addEventListener('click', (e) => {
+            e.preventDefault();
             startAreaSelection();
         });
 
-        setBtn.addEventListener('click', (e) => {
+        const btnSettings = document.createElement('button');
+        btnSettings.className = 'cnb-dock-btn';
+        btnSettings.textContent = '设置';
+        btnSettings.addEventListener('click', (e) => {
             e.preventDefault();
             openSettingsDialog();
         });
 
-        function positionButtons(left, top) {
-            btn.style.left = `${left}px`;
-            btn.style.top = `${top}px`;
-            btn.style.right = 'auto';
+        dock.appendChild(btnSelect);
+        dock.appendChild(btnSettings);
+        document.body.appendChild(dock);
 
-            // 设置按钮在主按钮下方偏移
-            const btnRect = btn.getBoundingClientRect();
-            const gap = 10;
-            setBtn.style.left = `${left + (btn.offsetWidth - setBtn.offsetWidth) / 2}px`;
-            setBtn.style.top = `${top + btn.offsetHeight + gap}px`;
-        }
 
-        return btn;
+
+        return dock;
     }
 
     // 开始区域选择模式
@@ -503,11 +770,16 @@
             document.body.removeChild(tooltip);
         }
 
-        // 移除样式
+        // 移除样式（包含已选与悬停高亮）
         if (selectedElement) {
             selectedElement.classList.remove('cnb-selection-selected');
-            selectedElement = null;
         }
+        const toClear = document.querySelectorAll('.cnb-selection-hover, .cnb-selection-selected');
+        toClear.forEach(el => {
+            el.classList.remove('cnb-selection-hover');
+            el.classList.remove('cnb-selection-selected');
+        });
+        selectedElement = null;
 
         // 移除事件监听
         document.removeEventListener('mouseover', handleMouseOver);
@@ -521,7 +793,7 @@
         if (!isSelecting) return;
 
         const element = e.target;
-        if (element !== selectedElement && !element.classList.contains('cnb-issue-floating-btn')) {
+        if (element !== selectedElement && !element.closest('.cnb-dock')) {
             // 移除之前的高亮
             const previousHighlight = document.querySelector('.cnb-selection-hover');
             if (previousHighlight) {
@@ -591,6 +863,11 @@
     function handleKeyDown(e) {
         if (e.key === 'Escape') {
             stopAreaSelection();
+        } else if (e.key === 'Enter' || e.key === 'NumpadEnter') {
+            if (isSelecting && selectedElement) {
+                e.preventDefault();
+                showIssueDialog(selectedElement);
+            }
         }
     }
 
@@ -615,21 +892,19 @@
             <h3>创建 CNB Issue (Markdown格式)</h3>
             <div>
                 <label>标题:</label>
-                <input type="text" id="cnb-issue-title" value="${escapeHtml(pageTitle)}" placeholder="输入Issue标题">
+                <input class="cnb-control" type="text" id="cnb-issue-title" value="${escapeHtml(pageTitle)}" placeholder="输入Issue标题">
             </div>
             <div>
                 <label>Markdown内容:</label>
-                <textarea id="cnb-issue-content" placeholder="Markdown内容将自动生成">## 页面信息
+                <textarea class="cnb-control" id="cnb-issue-content" placeholder="Markdown内容将自动生成">## 出处
 **URL:** ${escapeHtml(pageUrl)}
 **选择时间:** ${new Date().toLocaleString()}
-
-## 选择的内容
 
 ${escapeHtml(selectedContent)}</textarea>
             </div>
             <div>
-                <label>标签 (逗号分隔):</label>
-                <input type="text" id="cnb-issue-labels" placeholder="bug,enhancement,documentation">
+                <label>标签:</label>
+                <div id="cnb-issue-tags"></div>
             </div>
             <div class="cnb-issue-dialog-buttons">
                 <button class="cnb-issue-btn-cancel">取消</button>
@@ -638,6 +913,37 @@ ${escapeHtml(selectedContent)}</textarea>
         `;
 
         // 添加事件监听
+        // 渲染标签为可选按钮
+        const tagsContainer = dialog.querySelector('#cnb-issue-tags');
+        let selectedTags = [];
+        if (tagsContainer) {
+            tagsContainer.innerHTML = '';
+            const tags = Array.isArray(SAVED_TAGS) ? SAVED_TAGS : [];
+            if (tags.length === 0) {
+                const hint = document.createElement('div');
+                hint.className = 'cnb-hint';
+                hint.textContent = '在设置中添加标签后可在此选择';
+                tagsContainer.appendChild(hint);
+            } else {
+                tags.forEach(tag => {
+                    const btnTag = document.createElement('button');
+                    btnTag.type = 'button';
+                    btnTag.className = 'cnb-tag-btn';
+                    btnTag.textContent = tag;
+                    btnTag.addEventListener('click', () => {
+                        const idx = selectedTags.indexOf(tag);
+                        if (idx >= 0) {
+                            selectedTags.splice(idx, 1);
+                            btnTag.classList.remove('active');
+                        } else {
+                            selectedTags.push(tag);
+                            btnTag.classList.add('active');
+                        }
+                    });
+                    tagsContainer.appendChild(btnTag);
+                });
+            }
+        }
         const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
         const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
 
@@ -652,9 +958,8 @@ ${escapeHtml(selectedContent)}</textarea>
         confirmBtn.addEventListener('click', () => {
             const title = dialog.querySelector('#cnb-issue-title').value;
             const content = dialog.querySelector('#cnb-issue-content').value;
-            const labelsInput = dialog.querySelector('#cnb-issue-labels').value;
 
-            const labels = labelsInput.split(',').map(label => label.trim()).filter(label => label);
+            const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
 
             // 禁用按钮并显示加载状态
             confirmBtn.disabled = true;
@@ -724,22 +1029,120 @@ ${escapeHtml(selectedContent)}</textarea>
 
         const currentRepo = CONFIG.repoPath || '';
         const currentToken = CONFIG.accessToken || '';
+        const currentHotkey = START_HOTKEY || '';
+        const currentHotkeyEnabled = !!HOTKEY_ENABLED;
 
         dialog.innerHTML = `
             <h3>CNB 设置</h3>
             <div>
                 <label>仓库路径 (owner/repo):</label>
-                <input type="text" id="cnb-setting-repo" placeholder="例如: IIIStudio/Demo" value="${escapeHtml(currentRepo)}">
+                <input class="cnb-control" type="text" id="cnb-setting-repo" placeholder="例如: IIIStudio/Demo" value="${escapeHtml(currentRepo)}">
             </div>
             <div>
                 <label>访问令牌 (accessToken):</label>
-                <input type="password" id="cnb-setting-token" placeholder="输入访问令牌" value="${escapeHtml(currentToken)}">
+                <input class="cnb-control" type="password" id="cnb-setting-token" placeholder="输入访问令牌" value="${escapeHtml(currentToken)}">
+            </div>
+            <div>
+                <div class="cnb-flex" style="justify-content: space-between;">
+                    <label>快捷键（开启选择模式）:</label>
+                    <label class="cnb-switch" for="cnb-setting-hotkey-enabled" title="启用快捷键">
+                        <input type="checkbox" id="cnb-setting-hotkey-enabled" ${currentHotkeyEnabled ? 'checked' : ''}>
+                        <span class="cnb-switch-slider"></span>
+                    </label>
+                </div>
+                <div class="cnb-flex">
+                    <input class="cnb-control" type="text" id="cnb-setting-hotkey" placeholder="例如: Ctrl+Shift+Y" value="${escapeHtml(toDisplayHotkeyString(currentHotkey))}">
+                </div>
+            </div>
+            <div>
+                <label>标签管理:</label>
+                <div class="cnb-flex">
+                    <input class="cnb-control" type="text" id="cnb-setting-newtag" placeholder="输入新标签名称">
+                    <button class="cnb-tag-addbtn" id="cnb-setting-addtag" type="button">添加标签</button>
+                </div>
+                <div id="cnb-setting-tags-list" class="cnb-tags-list"></div>
             </div>
             <div class="cnb-issue-dialog-buttons">
                 <button class="cnb-issue-btn-cancel">取消</button>
                 <button class="cnb-issue-btn-confirm">保存</button>
             </div>
         `;
+
+        // 渲染与管理标签
+        const tagsList = dialog.querySelector('#cnb-setting-tags-list');
+        const newTagInput = dialog.querySelector('#cnb-setting-newtag');
+        const addTagBtn = dialog.querySelector('#cnb-setting-addtag');
+        const hotkeyInput = dialog.querySelector('#cnb-setting-hotkey');
+        const hotkeyEnabledInput = dialog.querySelector('#cnb-setting-hotkey-enabled');
+        if (hotkeyEnabledInput) {
+            hotkeyEnabledInput.addEventListener('change', () => {
+                HOTKEY_ENABLED = !!hotkeyEnabledInput.checked;
+                if (typeof GM_setValue === 'function') GM_setValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
+            });
+        }
+        // 录制快捷键：在输入框中按组合键即生成规范字符串
+        if (hotkeyInput) {
+            hotkeyInput.addEventListener('keydown', (e) => {
+                e.preventDefault();
+                const str = eventToHotkeyString(e);
+                hotkeyInput.value = toDisplayHotkeyString(normalizeHotkeyString(str));
+            });
+        }
+        // 回车键添加标签
+        newTagInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addTagBtn.click();
+            }
+        });
+
+        function renderTagsList() {
+            tagsList.innerHTML = '';
+            const tags = Array.isArray(SAVED_TAGS) ? SAVED_TAGS : [];
+            if (tags.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'cnb-hint';
+                empty.textContent = '暂无标签';
+                tagsList.appendChild(empty);
+                return;
+            }
+            tags.forEach((tag, idx) => {
+                const item = document.createElement('span');
+                item.textContent = tag;
+                item.className = 'cnb-tag-pill';
+
+                const del = document.createElement('button');
+                del.type = 'button';
+                del.textContent = '×';
+                del.title = '删除';
+                del.className = 'cnb-tag-delbtn';
+                del.addEventListener('click', () => {
+                    SAVED_TAGS.splice(idx, 1);
+                    if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
+                    renderTagsList();
+                });
+
+                item.appendChild(del);
+                tagsList.appendChild(item);
+            });
+        }
+
+        renderTagsList();
+
+        addTagBtn.addEventListener('click', () => {
+            const t = (newTagInput.value || '').trim();
+            if (!t) return;
+            if (!Array.isArray(SAVED_TAGS)) SAVED_TAGS = [];
+            if (!SAVED_TAGS.includes(t)) {
+                SAVED_TAGS.push(t);
+                if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
+                renderTagsList();
+                newTagInput.value = '';
+                if (typeof GM_notification === 'function') {
+                    GM_notification({ text: '标签已添加', title: 'CNB Issue工具', timeout: 1500 });
+                }
+            }
+        });
 
         const close = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -751,6 +1154,8 @@ ${escapeHtml(selectedContent)}</textarea>
         dialog.querySelector('.cnb-issue-btn-confirm').addEventListener('click', () => {
             const repo = dialog.querySelector('#cnb-setting-repo').value.trim();
             const token = dialog.querySelector('#cnb-setting-token').value.trim();
+            const hotkey = (dialog.querySelector('#cnb-setting-hotkey')?.value || '').trim();
+            const hotkeyEnabled = !!(dialog.querySelector('#cnb-setting-hotkey-enabled')?.checked);
             if (repo) {
                 CONFIG.repoPath = repo;
                 if (typeof GM_setValue === 'function') GM_setValue('repoPath', repo);
@@ -759,6 +1164,12 @@ ${escapeHtml(selectedContent)}</textarea>
                 CONFIG.accessToken = token;
                 if (typeof GM_setValue === 'function') GM_setValue('accessToken', token);
             }
+            if (hotkey) {
+                START_HOTKEY = normalizeHotkeyString(hotkey);
+                if (typeof GM_setValue === 'function') GM_setValue('cnbHotkey', START_HOTKEY);
+            }
+            HOTKEY_ENABLED = hotkeyEnabled;
+            if (typeof GM_setValue === 'function') GM_setValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
             if (typeof GM_notification === 'function') {
                 GM_notification({
                     text: '设置已保存',
@@ -907,11 +1318,18 @@ ${escapeHtml(selectedContent)}</textarea>
                 const token = GM_getValue('accessToken', CONFIG.accessToken);
                 CONFIG.repoPath = repo || CONFIG.repoPath;
                 CONFIG.accessToken = token || CONFIG.accessToken;
+                const tags = GM_getValue('cnbTags', []);
+                SAVED_TAGS = Array.isArray(tags) ? tags : [];
+                const hk = GM_getValue('cnbHotkey', START_HOTKEY);
+                if (hk) START_HOTKEY = normalizeHotkeyString(hk);
+                const hkEnabled = GM_getValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
+                HOTKEY_ENABLED = !!hkEnabled;
             }
         } catch (_) {}
 
         createFloatingButton();
-        console.log('CNB Issue区域选择工具 (Markdown版) 已加载 - 版本1.0');
+        // 注册全局快捷键
+        document.addEventListener('keydown', globalHotkeyHandler, true);
     }
 
     // 页面加载完成后初始化
