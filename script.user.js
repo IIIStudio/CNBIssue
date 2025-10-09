@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.2.1
+// @version      1.2.2
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -1309,7 +1309,7 @@ ${escapeHtml(selectedContent)}</textarea>
         dialog.innerHTML = `
             <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:12px; top:12px; border:none; background:transparent; color:#666; font-size:18px; line-height:1; cursor:pointer;">×</button>
             <h3>Issue 列表</h3>
-            <div class="cnb-hint" style="margin-bottom:8px;">显示 state=closed 的最近 30 条</div>
+            <div class="cnb-hint" style="margin-bottom:8px;">显示 state=closed 的最近 100 条</div>
             <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:8px 0;"></div>
             <div id="cnb-issue-list" style="height:60vh; overflow:auto; border:1px solid #e5e7eb; border-radius:6px;"></div>
         `;
@@ -1377,7 +1377,7 @@ ${escapeHtml(selectedContent)}</textarea>
         // 初始加载中
         listEl.innerHTML = `<div style="padding:12px;color:#666;">加载中...</div>`;
 
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=1&page_size=30&state=closed`;
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=1&page_size=100&state=closed`;
         GM_xmlhttpRequest({
             method: 'GET',
             url: url.replace(/&/g, '&'),
@@ -1424,7 +1424,7 @@ ${escapeHtml(selectedContent)}</textarea>
                             row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eef2f6;';
 
                             const left = document.createElement('div');
-                            left.style.cssText = 'min-width:0;flex:1;font-size:14px;color:#24292f;display:flex;gap:6px;align-items:center;';
+                            left.style.cssText = 'min-width:0;flex:1;font-size:14px;color:#24292f;display:flex;gap:5px !important;align-items:center;';
 
                             const prefix = document.createElement('span');
                             prefix.textContent = `#${number}`;
@@ -1433,13 +1433,81 @@ ${escapeHtml(selectedContent)}</textarea>
                             a.href = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${number}`;
                             a.target = '_blank';
                             a.rel = 'noopener noreferrer';
-                            a.textContent = title;
+                            const fullTitle = String(title || '');
+                            const truncated = fullTitle.length > 45 ? fullTitle.slice(0, 45) + '…' : fullTitle;
+                            a.textContent = truncated;
+                            a.title = fullTitle;
                             a.style.cssText = 'color:#0969da;text-decoration:none;word-break:break-all;';
                             a.addEventListener('mouseover', () => a.style.textDecoration = 'underline');
                             a.addEventListener('mouseout', () => a.style.textDecoration = 'none');
 
                             left.appendChild(prefix);
                             left.appendChild(a);
+
+                            // 复制按钮：关闭 Issue(完成) 并复制 title + body(清理为Markdown) 到剪贴板
+                            const btnCopy = document.createElement('button');
+                            btnCopy.type = 'button';
+                            btnCopy.textContent = '📋';
+                            btnCopy.title = '复制到剪贴板';
+                            btnCopy.style.cssText = 'margin-left:6px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:transparent;color:#57606a;font-size:12px;cursor:pointer;line-height:1;';
+                            btnCopy.addEventListener('mouseover', () => btnCopy.style.opacity = '0.75');
+                            btnCopy.addEventListener('mouseout', () => btnCopy.style.opacity = '1');
+                            btnCopy.addEventListener('click', () => {
+                                if (btnCopy.disabled) return;
+                                btnCopy.disabled = true;
+                                const oldText = btnCopy.textContent;
+                                btnCopy.textContent = '…';
+                                const urlPatch = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${number}`;
+                                GM_xmlhttpRequest({
+                                    method: 'PATCH',
+                                    url: urlPatch,
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `${CONFIG.accessToken}`,
+                                        'Accept': 'application/json'
+                                    },
+                                    data: JSON.stringify({ state: 'closed', state_reason: 'completed' }),
+                                    responseType: 'json',
+                                    onload: function(res) {
+                                        try {
+                                            if (res.status >= 200 && res.status < 300) {
+                                                let obj = null;
+                                                try {
+                                                    obj = (typeof res.response === 'object' && res.response !== null)
+                                                        ? res.response
+                                                        : JSON.parse(res.responseText || '{}');
+                                                } catch(_) {}
+                                                const t = (obj && obj.title) ? obj.title : title;
+                                                const b = (obj && typeof obj.body === 'string') ? obj.body : '';
+                                                const md = cleanMarkdownContent(String(b || ''));
+                                                if (typeof GM_setClipboard === 'function') {
+                                                    GM_setClipboard(`${t}
+
+${md}`, 'text');
+                                                }
+                                                if (typeof GM_notification === 'function') {
+                                                    GM_notification({ text: '已关闭并复制到剪贴板', title: 'CNB Issue工具', timeout: 3000 });
+                                                }
+                                            } else {
+                                                if (typeof GM_notification === 'function') {
+                                                    GM_notification({ text: '操作失败: HTTP ' + res.status, title: 'CNB Issue工具', timeout: 5000 });
+                                                }
+                                            }
+                                        } finally {
+                                            btnCopy.disabled = false;
+                                            btnCopy.textContent = oldText;
+                                        }
+                                    },
+                                    onerror: function() {
+                                        if (typeof GM_notification === 'function') {
+                                            GM_notification({ text: '网络请求失败', title: 'CNB Issue工具', timeout: 5000 });
+                                        }
+                                        btnCopy.disabled = false;
+                                        btnCopy.textContent = oldText;
+                                    }
+                                });
+                            });
+                            left.appendChild(btnCopy);
 
                             const right = document.createElement('div');
                             right.style.cssText = 'flex:0 0 auto;color:#57606a;font-size:12px;text-align:right;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;';
