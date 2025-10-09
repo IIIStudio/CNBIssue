@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.2.0
+// @version      1.2.1
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -902,6 +902,15 @@
         const dialog = document.createElement('div');
         dialog.className = 'cnb-issue-dialog';
 
+        // 强化筛选容器为 flex 并固定 5px 间距（避免被站点样式覆盖）
+        GM_addStyle(`
+            .cnb-issue-dialog .cnb-issue-filter {
+                display: flex !important;
+                flex-wrap: wrap !important;
+                gap: 5px !important;
+            }
+        `);
+
         // 强化筛选标签按钮样式（避免被站点样式覆盖，统一为胶囊风格）
         GM_addStyle(`
             .cnb-issue-dialog .cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }
@@ -1390,6 +1399,13 @@ ${escapeHtml(selectedContent)}</textarea>
                     // 渲染 + 筛选
                     const allItems = Array.isArray(items) ? items : [];
                     const filterEl = dialog.querySelector('#cnb-issue-filter');
+                    // 行内样式强制为 flex 并设置 5px 间距，避免被站点覆盖
+                    if (filterEl) {
+                        const s = filterEl.style;
+                        s.setProperty('display', 'flex', 'important');
+                        s.setProperty('flex-wrap', 'wrap', 'important');
+                        s.setProperty('gap', '5px', 'important');
+                    }
 
                     function render(filterLabel) {
                         const frag = document.createDocumentFragment();
@@ -1529,6 +1545,8 @@ ${escapeHtml(selectedContent)}</textarea>
                             s.setProperty('transition', 'background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease', 'important');
                             s.setProperty('cursor', 'pointer', 'important');
                             s.setProperty('user-select', 'none', 'important');
+                            // 关键：移除按钮自身外边距，确保由容器 gap 控制间距
+                            s.setProperty('margin', '0', 'important');
                         }
                         function applyFilterButtonDefault(btn) {
                             const s = btn.style;
