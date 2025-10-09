@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.1.3
+// @version      1.2.0
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -718,6 +718,14 @@
 
         dock.appendChild(btnSelect);
         dock.appendChild(btnSettings);
+        const btnList = document.createElement('button');
+        btnList.className = 'cnb-dock-btn';
+        btnList.textContent = '列表';
+        btnList.addEventListener('click', (e) => {
+            e.preventDefault();
+            openIssueList();
+        });
+        dock.appendChild(btnList);
         document.body.appendChild(dock);
 
 
@@ -893,6 +901,44 @@
         // 创建对话框
         const dialog = document.createElement('div');
         dialog.className = 'cnb-issue-dialog';
+
+        // 强化筛选标签按钮样式（避免被站点样式覆盖，统一为胶囊风格）
+        GM_addStyle(`
+            .cnb-issue-dialog .cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }
+            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn {
+                display: inline-flex !important;
+                align-items: center !important;
+                gap: 6px !important;
+                padding: 4px 10px !important;
+                border: 1px solid #d0d7de !important;
+                border-radius: 9999px !important;
+                background: #fff !important;
+                color: #24292f !important;
+                font-size: 13px !important;
+                line-height: 1.2 !important;
+                white-space: nowrap !important;
+                vertical-align: middle !important;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.04) !important;
+                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
+                cursor: pointer !important;
+                user-select: none !important;
+            }
+            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn:hover {
+                background: #f6f8fa !important;
+                border-color: #afb8c1 !important;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.06) !important;
+            }
+            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.active {
+                background: #0366d6 !important;
+                border-color: #0256b9 !important;
+                color: #fff !important;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.05) !important;
+            }
+            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.pressed {
+                transform: translateY(1px) scale(0.98) !important;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.08) !important;
+            }
+        `);
 
         // 获取选择的内容并转换为Markdown
         const selectedContent = getSelectedContentAsMarkdown(selectedElement);
@@ -1235,6 +1281,297 @@ ${escapeHtml(selectedContent)}</textarea>
         document.body.appendChild(dialog);
     }
 
+    // Issue 列表弹窗
+    function openIssueList() {
+        if (!CONFIG.repoPath || !CONFIG.accessToken) {
+            if (typeof GM_notification === 'function') {
+                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
+            }
+            if (typeof openSettingsDialog === 'function') openSettingsDialog();
+            return;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.className = 'cnb-issue-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'cnb-issue-dialog';
+
+        dialog.innerHTML = `
+            <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:12px; top:12px; border:none; background:transparent; color:#666; font-size:18px; line-height:1; cursor:pointer;">×</button>
+            <h3>Issue 列表</h3>
+            <div class="cnb-hint" style="margin-bottom:8px;">显示 state=closed 的最近 30 条</div>
+            <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:8px 0;"></div>
+            <div id="cnb-issue-list" style="height:60vh; overflow:auto; border:1px solid #e5e7eb; border-radius:6px;"></div>
+        `;
+
+        // 固定对话框尺寸，防止点击筛选按钮时窗口抖动
+        dialog.style.width = '840px';
+        dialog.style.maxWidth = '840px';
+
+        // 补充：筛选按钮按压态样式
+        GM_addStyle(`
+            .cnb-issue-filter-btn.pressed {
+                transform: translateY(1px) scale(0.98);
+                box-shadow: 0 1px 0 rgba(27,31,36,0.08);
+            }
+            .cnb-issue-filter-btn {
+                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease;
+            }
+        `);
+
+        const listEl = dialog.querySelector('#cnb-issue-list');
+        const closeBtn = dialog.querySelector('.cnb-dialog-close');
+
+        // 行内标签（Issue 列表中的 labels）胶囊样式
+        GM_addStyle(`
+            .cnb-issue-chip {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 2px 8px;
+                border: 1px solid #d0d7de;
+                border-radius: 9999px;
+                background: #fff;
+                color: #24292f;
+                font-size: 12px;
+                line-height: 1.2;
+                white-space: nowrap;
+                vertical-align: middle;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.04);
+                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease;
+                user-select: none;
+            }
+            .cnb-issue-chip:hover {
+                background: #f6f8fa;
+                border-color: #afb8c1;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.06);
+            }
+        `);
+        const close = () => {
+            if (document.body.contains(overlay)) document.body.removeChild(overlay);
+            if (document.body.contains(dialog)) document.body.removeChild(dialog);
+            document.removeEventListener('keydown', onEsc, true);
+        };
+        overlay.addEventListener('click', close);
+        if (closeBtn) closeBtn.addEventListener('click', close);
+
+        // ESC 关闭
+        const onEsc = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+            }
+        };
+        document.addEventListener('keydown', onEsc, true);
+
+        // 初始加载中
+        listEl.innerHTML = `<div style="padding:12px;color:#666;">加载中...</div>`;
+
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=1&page_size=30&state=closed`;
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url: url.replace(/&/g, '&'),
+            headers: {
+                'accept': 'application/json',
+                'Authorization': `${CONFIG.accessToken}`
+            },
+            responseType: 'json',
+            onload: function(res) {
+                try {
+                    const data = typeof res.response === 'object' && res.response !== null
+                        ? res.response
+                        : JSON.parse(res.responseText || '[]');
+                    const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
+                    if (!items.length) {
+                        listEl.innerHTML = `<div style="padding:12px;color:#666;">暂无数据</div>`;
+                        return;
+                    }
+                    // 渲染 + 筛选
+                    const allItems = Array.isArray(items) ? items : [];
+                    const filterEl = dialog.querySelector('#cnb-issue-filter');
+
+                    function render(filterLabel) {
+                        const frag = document.createDocumentFragment();
+                        const filtered = !filterLabel ? allItems : allItems.filter(it => {
+                            const names = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
+                            return names.includes(filterLabel);
+                        });
+
+                        filtered.forEach(it => {
+                            const number = it.number ?? it.id ?? it.iid ?? '';
+                            const title = it.title ?? '';
+                            const createdAt = it.created_at ?? '';
+                            const labelNames = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
+
+                            const row = document.createElement('div');
+                            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eef2f6;';
+
+                            const left = document.createElement('div');
+                            left.style.cssText = 'min-width:0;flex:1;font-size:14px;color:#24292f;display:flex;gap:6px;align-items:center;';
+
+                            const prefix = document.createElement('span');
+                            prefix.textContent = `#${number}`;
+
+                            const a = document.createElement('a');
+                            a.href = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${number}`;
+                            a.target = '_blank';
+                            a.rel = 'noopener noreferrer';
+                            a.textContent = title;
+                            a.style.cssText = 'color:#0969da;text-decoration:none;word-break:break-all;';
+                            a.addEventListener('mouseover', () => a.style.textDecoration = 'underline');
+                            a.addEventListener('mouseout', () => a.style.textDecoration = 'none');
+
+                            left.appendChild(prefix);
+                            left.appendChild(a);
+
+                            const right = document.createElement('div');
+                            right.style.cssText = 'flex:0 0 auto;color:#57606a;font-size:12px;text-align:right;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;';
+
+                            // 标签胶囊容器
+                            const labelsWrap = document.createElement('div');
+                            labelsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
+
+                            const labelObjs = Array.isArray(it.labels) ? it.labels : [];
+                            labelObjs.forEach(l => {
+                                const chip = document.createElement('span');
+                                chip.className = 'cnb-issue-chip';
+                                chip.textContent = l?.name ?? '';
+                                // 若有颜色，应用为背景，并适当设置边框与前景色
+                                const color = (l && typeof l.color === 'string' && l.color) ? l.color : '';
+                                if (color) {
+                                    chip.style.background = color;
+                                    // 根据背景亮度调整文字与边框（简单阈值）
+                                    try {
+                                        const hex = color.replace('#','');
+                                        const r = parseInt(hex.substring(0,2),16);
+                                        const g = parseInt(hex.substring(2,4),16);
+                                        const b = parseInt(hex.substring(4,6),16);
+                                        const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+                                        chip.style.color = lum < 140 ? '#fff' : '#24292f';
+                                        chip.style.borderColor = lum < 140 ? 'rgba(255,255,255,0.35)' : '#d0d7de';
+                                    } catch(_) {}
+                                }
+                                labelsWrap.appendChild(chip);
+                            });
+
+                            const dateSpan = document.createElement('span');
+                            dateSpan.textContent = createdAt;
+                            dateSpan.style.cssText = 'color:#57606a;';
+
+                            right.appendChild(labelsWrap);
+                            right.appendChild(dateSpan);
+
+                            row.appendChild(left);
+                            row.appendChild(right);
+                            frag.appendChild(row);
+                        });
+
+                        listEl.innerHTML = '';
+                        listEl.appendChild(frag);
+                    }
+
+                    // 渲染筛选按钮
+                    if (filterEl) {
+                        filterEl.innerHTML = '';
+                        const allBtn = document.createElement('button');
+                        allBtn.className = 'cnb-issue-filter-btn active';
+                        allBtn.textContent = '全部';
+                        applyFilterButtonStyles(allBtn);
+                        applyFilterButtonActive(allBtn);
+                        addPressEffect(allBtn);
+                        allBtn.addEventListener('click', () => {
+                            setActive(allBtn);
+                            render(null);
+                        });
+                        filterEl.appendChild(allBtn);
+
+                        const tagList = Array.isArray(SAVED_TAGS) ? SAVED_TAGS : [];
+                        tagList.forEach(tag => {
+                            const b = document.createElement('button');
+                            b.className = 'cnb-issue-filter-btn';
+                            b.textContent = tag;
+                            applyFilterButtonStyles(b);
+                            addPressEffect(b);
+                            b.addEventListener('click', () => {
+                                setActive(b);
+                                render(tag);
+                            });
+                            filterEl.appendChild(b);
+                        });
+
+                        function setActive(btn) {
+                            const buttons = filterEl.querySelectorAll('button');
+                            buttons.forEach(x => {
+                                x.classList.remove('active');
+                                applyFilterButtonDefault(x);
+                            });
+                            btn.classList.add('active');
+                            applyFilterButtonActive(btn);
+                        }
+
+                        // 行内样式（带 !important）确保胶囊风格不被站点覆盖
+                        function applyFilterButtonStyles(btn) {
+                            const s = btn.style;
+                            s.setProperty('display', 'inline-flex', 'important');
+                            s.setProperty('align-items', 'center', 'important');
+                            s.setProperty('gap', '6px', 'important');
+                            s.setProperty('padding', '4px 10px', 'important');
+                            s.setProperty('border', '1px solid #d0d7de', 'important');
+                            s.setProperty('border-radius', '9999px', 'important');
+                            s.setProperty('background', '#fff', 'important');
+                            s.setProperty('color', '#24292f', 'important');
+                            s.setProperty('font-size', '13px', 'important');
+                            s.setProperty('line-height', '1.2', 'important');
+                            s.setProperty('white-space', 'nowrap', 'important');
+                            s.setProperty('vertical-align', 'middle', 'important');
+                            s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
+                            s.setProperty('transition', 'background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease', 'important');
+                            s.setProperty('cursor', 'pointer', 'important');
+                            s.setProperty('user-select', 'none', 'important');
+                        }
+                        function applyFilterButtonDefault(btn) {
+                            const s = btn.style;
+                            s.setProperty('background', '#fff', 'important');
+                            s.setProperty('border-color', '#d0d7de', 'important');
+                            s.setProperty('color', '#24292f', 'important');
+                            s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
+                        }
+                        function applyFilterButtonActive(btn) {
+                            const s = btn.style;
+                            s.setProperty('background', '#0366d6', 'important');
+                            s.setProperty('border-color', '#0256b9', 'important');
+                            s.setProperty('color', '#fff', 'important');
+                            s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.05)', 'important');
+                        }
+
+                        // 为筛选按钮添加按压反馈
+                        function addPressEffect(btn) {
+                            btn.addEventListener('mousedown', () => btn.classList.add('pressed'));
+                            btn.addEventListener('mouseup', () => btn.classList.remove('pressed'));
+                            btn.addEventListener('mouseleave', () => btn.classList.remove('pressed'));
+                            btn.addEventListener('touchstart', () => btn.classList.add('pressed'), { passive: true });
+                            btn.addEventListener('touchend', () => btn.classList.remove('pressed'));
+                            btn.addEventListener('touchcancel', () => btn.classList.remove('pressed'));
+                            btn.addEventListener('blur', () => btn.classList.remove('pressed'));
+                        }
+                    }
+
+                    // 初次渲染全部
+                    render(null);
+                } catch (e) {
+                    listEl.innerHTML = `<div style="padding:12px;color:#d32f2f;">解析失败</div>`;
+                }
+            },
+            onerror: function() {
+                listEl.innerHTML = `<div style="padding:12px;color:#d32f2f;">网络请求失败</div>`;
+            }
+        });
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(dialog);
+    }
+
     // 创建Issue
     function createIssue(title, content, labels = [], callback) {
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
@@ -1254,6 +1591,48 @@ ${escapeHtml(selectedContent)}</textarea>
         };
 
         const apiUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}`;
+
+        // 注入筛选按钮样式（pill 风格）
+        GM_addStyle(`
+            .cnb-issue-filter {
+                display:flex;
+                flex-wrap:wrap;
+                gap:6px;
+            }
+            .cnb-issue-filter-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 4px 10px;
+                border: 1px solid #d0d7de;
+                border-radius: 9999px;
+                background: #fff;
+                color: #24292f;
+                font-size: 13px;
+                line-height: 1.2;
+                white-space: nowrap;
+                vertical-align: middle;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.04);
+                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease;
+                cursor: pointer;
+                user-select: none;
+            }
+            .cnb-issue-filter-btn:hover {
+                background: #f6f8fa;
+                border-color: #afb8c1;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.06);
+            }
+            .cnb-issue-filter-btn:active {
+                transform: translateY(1px);
+                box-shadow: 0 1px 0 rgba(27,31,36,0.08);
+            }
+            .cnb-issue-filter-btn.active {
+                background: #0366d6;
+                border-color: #0256b9;
+                color: #fff;
+                box-shadow: 0 1px 0 rgba(27,31,36,0.05);
+            }
+        `);
 
         GM_xmlhttpRequest({
             method: 'POST',
