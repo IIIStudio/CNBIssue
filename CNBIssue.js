@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.1.1
+// @version      1.1.2
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -1008,8 +1008,8 @@ ${escapeHtml(selectedContent)}</textarea>
     function cleanMarkdownContent(markdown) {
         return markdown
             .replace(/\n{3,}/g, '\n\n') // 多个空行合并为两个
-            .replace(/^\s+|\s+$/g, '') // 去除首尾空白
-            .substring(0, 10000); // 限制长度
+
+            .replace(/^\s+|\s+$/g, ''); // 去除首尾空白
     }
 
     // HTML转义
