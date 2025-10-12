@@ -19,6 +19,8 @@
 **演示效果：https://cnb.cool/IIIStudio/Demo/-/issues?q=state%3Aclosed**
 
 ## 更新日志
+- ### 1.2.4
+    - 添加 CNB url安全拦截跳转
 - ### 1.2.3
     - 修改 按键默认隐藏
 - ### 1.2.2
