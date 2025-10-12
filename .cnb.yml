@@ -28,4 +28,4 @@ main:
             push_tags: false              
             git_user: ${GIT_USERNAME}
             git_email: ${GIT_EMAIL} 
-            sync_strategy: "overwrite"
+            #sync_strategy: "overwrite"
