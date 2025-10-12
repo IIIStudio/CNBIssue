@@ -1309,7 +1309,7 @@ ${escapeHtml(selectedContent)}</textarea>
         dialog.innerHTML = `
             <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:12px; top:12px; border:none; background:transparent; color:#666; font-size:18px; line-height:1; cursor:pointer;">×</button>
             <h3>Issue 列表</h3>
-            <div class="cnb-hint" style="margin-bottom:8px;">显示 state=closed 的最近 30 条</div>
+            <div class="cnb-hint" style="margin-bottom:8px;">显示 state=closed 的最近 100 条</div>
             <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:8px 0;"></div>
             <div id="cnb-issue-list" style="height:60vh; overflow:auto; border:1px solid #e5e7eb; border-radius:6px;"></div>
         `;
@@ -1377,7 +1377,7 @@ ${escapeHtml(selectedContent)}</textarea>
         // 初始加载中
         listEl.innerHTML = `<div style="padding:12px;color:#666;">加载中...</div>`;
 
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=1&page_size=30&state=closed`;
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=1&page_size=100&state=closed`;
         GM_xmlhttpRequest({
             method: 'GET',
             url: url.replace(/&/g, '&'),
@@ -1434,7 +1434,7 @@ ${escapeHtml(selectedContent)}</textarea>
                             a.target = '_blank';
                             a.rel = 'noopener noreferrer';
                             const fullTitle = String(title || '');
-                            const truncated = fullTitle.length > 80 ? fullTitle.slice(0, 80) + '…' : fullTitle;
+                            const truncated = fullTitle.length > 40 ? fullTitle.slice(0, 40) + '…' : fullTitle;
                             a.textContent = truncated;
                             a.title = fullTitle;
                             a.style.cssText = 'color:#0969da;text-decoration:none;word-break:break-all;';
