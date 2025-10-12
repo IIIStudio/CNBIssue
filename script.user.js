@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.2.3
+// @version      1.2.4
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -1877,6 +1877,84 @@ ${md}`, 'text');
         });
     }
 
+    // 直达目标解码：获取 cnb.cool /goto?url= 的目标地址
+    function getCnbGotoTarget(urlLike) {
+        try {
+            const u = new URL(urlLike, location.href);
+            const raw = u.searchParams.get('url') || '';
+            if (!raw) return '';
+            // 解码 1-2 次，兼容已编码/双重编码
+            let t = decodeURIComponent(raw);
+            try {
+                // 如果仍是百分号编码痕迹，再解一次
+                if (/%[0-9A-Fa-f]{2}/.test(t)) t = decodeURIComponent(t);
+            } catch (_) {}
+            // 只允许 http/https
+            if (!/^https?:\/\//i.test(t)) return '';
+            return t;
+        } catch (_) {
+            return '';
+        }
+    }
+
+    // 若当前位于 cnb.cool 的 /goto 跳转页，立即重定向到真实目标
+    function handleCnbGotoPage() {
+        const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
+        if (!isCNB) return;
+        if (location.pathname === '/goto') {
+            const target = getCnbGotoTarget(location.href);
+            if (target) {
+                // 不留历史记录
+                location.replace(target);
+            }
+        }
+    }
+
+    // 将页面内所有 /goto?url= 链接批量改写为直链
+    function rewriteCnbGotoLinks(root = document) {
+        try {
+            const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
+            if (!isCNB) return;
+            const list = root.querySelectorAll('a[href*="/goto?url="], a[href^="/goto?url="], a[href^="https://cnb.cool/goto?url="]');
+            list.forEach(a => {
+                const t = getCnbGotoTarget(a.href);
+                if (t) a.href = t;
+            });
+        } catch (_) {}
+    }
+
+    // 事件委托兜底：拦截点击 /goto?url= 的链接并直接打开目标
+    function cnbGotoClickHandler(e) {
+        const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
+        if (!isCNB) return;
+        // 仅关心主按钮/中键点击到 <a>
+        let el = e.target;
+        while (el && el !== document && !(el instanceof HTMLAnchorElement)) {
+            el = el.parentElement;
+        }
+        if (!(el instanceof HTMLAnchorElement)) return;
+
+        const href = el.getAttribute('href') || '';
+        // 使用绝对地址判断，以覆盖相对路径
+        const abs = (new URL(href, location.href)).href;
+        if (!/\/goto\?url=/i.test(abs)) return;
+
+        const target = getCnbGotoTarget(abs);
+        if (!target) return;
+
+        // 阻止站内跳转页
+        e.preventDefault();
+        e.stopPropagation();
+
+        // 兼容中键或带修饰键的新开方式
+        const newTab = e.button === 1 || e.ctrlKey || e.metaKey;
+        if (newTab) {
+            window.open(target, '_blank', 'noopener');
+        } else {
+            location.href = target;
+        }
+    }
+
     // 初始化
     function init() {
         // 读取持久化配置
@@ -1896,6 +1974,29 @@ ${md}`, 'text');
         } catch (_) {}
 
         createFloatingButton();
+
+        // cnb.cool 跳转页直达与站内直链化
+        handleCnbGotoPage();
+        if (/\b(^|\.)cnb\.cool$/i.test(location.hostname)) {
+            // 首次批量改写
+            rewriteCnbGotoLinks(document);
+            // 事件委托拦截兜底
+            document.addEventListener('click', cnbGotoClickHandler, true);
+            // 监听后续动态内容
+            try {
+                const mo = new MutationObserver(mutations => {
+                    for (const m of mutations) {
+                        m.addedNodes && m.addedNodes.forEach(node => {
+                            if (node.nodeType === Node.ELEMENT_NODE) {
+                                rewriteCnbGotoLinks(node);
+                            }
+                        });
+                    }
+                });
+                mo.observe(document.documentElement || document.body, { childList: true, subtree: true });
+            } catch (_) {}
+        }
+
         // 注册全局快捷键
         document.addEventListener('keydown', globalHotkeyHandler, true);
     }
