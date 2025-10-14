@@ -2114,7 +2114,7 @@ ${md}`, 'text');
                                         btn.title = '复制代码';
                                         btn.setAttribute('aria-label', '复制代码');
                                         btn.style.position = 'absolute';
-                                        btn.style.top = '6px';
+                                        btn.style.top = '4px';
                                         btn.style.right = '6px';
                                         btn.style.border = 'none';
                                         btn.style.background = 'rgba(255,255,255,0.10)';
