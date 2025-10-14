@@ -14,5 +14,6 @@
   "chat.commandCenter.enabled": false,
   "yaml.customTags": [
     "!reference sequence"
-  ]
+  ],
+  "git.enableSmartCommit": true
 }
