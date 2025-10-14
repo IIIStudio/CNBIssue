@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.3
+// @version      1.3.1
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -2169,6 +2169,66 @@ ${md}`, 'text');
                                 } catch (_) {}
                             });
                         }
+                        // 行为增强：为每个代码块提供“两行预览 + 展开/收起”，复制仍复制全文
+                        try {
+                          if (typeof GM_addStyle === 'function') {
+                            GM_addStyle(`
+                              .cnb-pre-collapsed {
+                                max-height: 3.2em; /* 约两行 */
+                                overflow: hidden;
+                                position: relative;
+                              }
+                              .cnb-pre-collapsed::after {
+                                content: '';
+                                position: absolute;
+                                left: 0; right: 0; bottom: 0;
+                                height: 28px;
+                                background: linear-gradient(to bottom, rgba(11,16,33,0), rgba(11,16,33,0.85));
+                                pointer-events: none;
+                              }
+                              .cnb-code-toggle {
+                                position: absolute;
+                                right: 32px; bottom: 11px;
+                                border: none;
+                                background: rgba(255,255,255,0.10);
+                                color: #e6edf3;
+                                padding: 3px 6px;
+                                border-radius: 6px;
+                                cursor: pointer;
+                                font-size: 12px;
+                              }
+                              .cnb-code-toggle:hover { background: rgba(255,255,255,0.18); }
+                            `);
+                          }
+                        } catch (_) {}
+                        try {
+                          const pres2 = bodyEl ? bodyEl.querySelectorAll('pre') : [];
+                          pres2.forEach(pre => {
+                            try {
+                              const codeEl = pre.querySelector('code') || pre;
+                              const text = codeEl ? (codeEl.textContent || '') : (pre.textContent || '');
+                              const lines = String(text || '').split('\n');
+                              if (lines.length <= 2) return;
+                              // 初始折叠为两行
+                              pre.classList.add('cnb-pre-collapsed');
+                              // 若不存在展开按钮则添加
+                              if (!pre.querySelector('.cnb-code-toggle')) {
+                                const tbtn = document.createElement('button');
+                                tbtn.type = 'button';
+                                tbtn.className = 'cnb-code-toggle';
+                                tbtn.textContent = '展开';
+                                tbtn.title = '展开/收起';
+                                tbtn.addEventListener('click', (e) => {
+                                  e.stopPropagation();
+                                  const collapsed = pre.classList.toggle('cnb-pre-collapsed');
+                                  tbtn.textContent = collapsed ? '展开' : '收起';
+                                });
+                                pre.appendChild(tbtn);
+                              }
+                            } catch (_) {}
+                          });
+                        } catch (_) {}
+
                         // 基于 h2 构建章节按键并切换显示
                         try {
                           const contentDiv = dialog.querySelector('.cnb-clipwin-content');
