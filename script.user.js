@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.2.4
+// @version      1.2.5
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -483,6 +483,9 @@
 
     let isSelecting = false;
     let selectedElement = null;
+    // 多选集合与最近一次选择的元素
+    let selectedElements = new Set();
+    let lastSelectedElement = null;
 
     // HTML转Markdown的转换器
     const htmlToMarkdown = {
@@ -756,11 +759,11 @@
         const cancelBtn = tooltip.querySelector('#cnb-cancel-selection');
 
         confirmBtn.addEventListener('click', () => {
-            if (selectedElement) {
-                showIssueDialog(selectedElement);
+            if (selectedElements && selectedElements.size > 0) {
+                showIssueDialog(Array.from(selectedElements));
             } else {
                 GM_notification({
-                    text: '请先选择一个区域',
+                    text: '请先选择区域（支持 Ctrl+点击多选）',
                     title: 'CNB Issue工具',
                     timeout: 3000
                 });
@@ -798,6 +801,8 @@
             el.classList.remove('cnb-selection-hover');
             el.classList.remove('cnb-selection-selected');
         });
+        selectedElements = new Set();
+        lastSelectedElement = null;
         selectedElement = null;
 
         // 移除事件监听
@@ -812,7 +817,7 @@
         if (!isSelecting) return;
 
         const element = e.target;
-        if (element !== selectedElement && !element.closest('.cnb-dock')) {
+        if (!selectedElements.has(element) && !element.closest('.cnb-dock')) {
             // 移除之前的高亮
             const previousHighlight = document.querySelector('.cnb-selection-hover');
             if (previousHighlight) {
@@ -829,7 +834,7 @@
         if (!isSelecting) return;
 
         const element = e.target;
-        if (element !== selectedElement && element.classList.contains('cnb-selection-hover')) {
+        if (!selectedElements.has(element) && element.classList.contains('cnb-selection-hover')) {
             element.classList.remove('cnb-selection-hover');
         }
     }
@@ -843,15 +848,26 @@
 
         const element = e.target;
 
-        // 移除之前的选择
-        if (selectedElement) {
-            selectedElement.classList.remove('cnb-selection-selected');
+        // Ctrl 多选：切换该元素选中状态；否则保持单选
+        if (e.ctrlKey === true) {
+            element.classList.remove('cnb-selection-hover');
+            if (selectedElements.has(element)) {
+                element.classList.remove('cnb-selection-selected');
+                selectedElements.delete(element);
+            } else {
+                element.classList.add('cnb-selection-selected');
+                selectedElements.add(element);
+                lastSelectedElement = element;
+            }
+        } else {
+            selectedElements.forEach(el => el.classList.remove('cnb-selection-selected'));
+            selectedElements.clear();
+            selectedElement = element;
+            selectedElement.classList.remove('cnb-selection-hover');
+            selectedElement.classList.add('cnb-selection-selected');
+            selectedElements.add(selectedElement);
+            lastSelectedElement = selectedElement;
         }
-
-        // 选择新元素
-        selectedElement = element;
-        selectedElement.classList.remove('cnb-selection-hover');
-        selectedElement.classList.add('cnb-selection-selected');
 
         // 更新提示信息
         const tooltip = document.getElementById('cnb-selection-tooltip');
@@ -869,8 +885,14 @@
             const cancelBtn = tooltip.querySelector('#cnb-cancel-selection');
 
             confirmBtn.addEventListener('click', () => {
-                if (selectedElement) {
-                    showIssueDialog(selectedElement);
+                if (selectedElements && selectedElements.size > 0) {
+                    showIssueDialog(Array.from(selectedElements));
+                } else if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        text: '请先选择区域（支持 Ctrl+点击多选）',
+                        title: 'CNB Issue工具',
+                        timeout: 3000
+                    });
                 }
             });
 
@@ -883,15 +905,15 @@
         if (e.key === 'Escape') {
             stopAreaSelection();
         } else if (e.key === 'Enter' || e.key === 'NumpadEnter') {
-            if (isSelecting && selectedElement) {
+            if (isSelecting && selectedElements && selectedElements.size > 0) {
                 e.preventDefault();
-                showIssueDialog(selectedElement);
+                showIssueDialog(Array.from(selectedElements));
             }
         }
     }
 
     // 显示创建Issue的对话框
-    function showIssueDialog(selectedElement) {
+    function showIssueDialog(selected) {
         stopAreaSelection(); // 先退出选择模式
 
         // 创建遮罩层
@@ -949,8 +971,17 @@
             }
         `);
 
-        // 获取选择的内容并转换为Markdown
-        const selectedContent = getSelectedContentAsMarkdown(selectedElement);
+        // 获取选择的内容并转换为Markdown（支持多选）
+        const elements = Array.isArray(selected) ? selected : (selected ? [selected] : []);
+        const parts = elements.map(el => (getSelectedContentAsMarkdown(el) || '').trim()).filter(Boolean);
+        const joined = parts.join(`
+        
+---
+
+        
+`);
+        const selectedContent = (parts.length > 1 ? `
+` : '') + joined;
         const pageTitle = document.title;
         const pageUrl = window.location.href;
 
