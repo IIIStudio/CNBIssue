@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.2.5
+// @version      1.3
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -729,6 +729,24 @@
             openIssueList();
         });
         dock.appendChild(btnList);
+
+        // 剪贴板（根据设置的“剪贴板位置”是否为空来决定是否显示）
+        let __cnbClipCfg = '';
+        try { if (typeof GM_getValue === 'function') { const v = GM_getValue('cnbClipboardIssue', ''); __cnbClipCfg = String(v || '').trim(); } } catch (_) {}
+        if (__cnbClipCfg) {
+            const btnClipboard = document.createElement('button');
+            btnClipboard.id = 'cnb-btn-clipboard';
+            btnClipboard.className = 'cnb-dock-btn';
+            btnClipboard.textContent = '剪贴板';
+            btnClipboard.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (typeof openClipboardWindow === 'function') {
+                    openClipboardWindow();
+                }
+            });
+            dock.appendChild(btnClipboard);
+        }
+
         document.body.appendChild(dock);
 
 
@@ -975,10 +993,10 @@
         const elements = Array.isArray(selected) ? selected : (selected ? [selected] : []);
         const parts = elements.map(el => (getSelectedContentAsMarkdown(el) || '').trim()).filter(Boolean);
         const joined = parts.join(`
-        
+
 ---
 
-        
+
 `);
         const selectedContent = (parts.length > 1 ? `
 ` : '') + joined;
@@ -1149,6 +1167,63 @@ ${escapeHtml(selectedContent)}</textarea>
             .replace(/^\s+|\s+$/g, ''); // 去除首尾空白
     }
 
+    // 轻量 Markdown 转 HTML（基础语法）
+    function markdownToHtml(md) {
+        if (!md) return '';
+        let placeholders = [];
+        // 保护代码块 ```lang\n...\n```
+        md = md.replace(/```(\w+)?\n([\s\S]*?)```/g, function(_, lang, code) {
+            const idx = placeholders.length;
+            const esc = (s)=>String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>');
+            placeholders.push(`<pre><code class="language-${lang||''}">${esc(code)}</code></pre>`);
+            return `\u0000BLOCK${idx}\u0000`;
+        });
+        // 保护行内代码 `code`
+        md = md.replace(/`([^`\n]+)`/g, function(_, code){
+            const idx = placeholders.length;
+            const esc = (s)=>String(s).replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>');
+            placeholders.push(`<code>${esc(code)}</code>`);
+            return `\u0000INLINE${idx}\u0000`;
+        });
+        // 先整体转义，避免 HTML 注入
+        md = md.replace(/&/g,'&').replace(/</g,'<').replace(/>/g,'>');
+        // 图片与链接
+        md = md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
+        md = md.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+        // 粗体/斜体
+        md = md.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        md = md.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+        // 标题
+        md = md.replace(/^(#{6})\s+(.+)$/gm, '<h6>$2</h6>')
+               .replace(/^(#{5})\s+(.+)$/gm, '<h5>$2</h5>')
+               .replace(/^(#{4})\s+(.+)$/gm, '<h4>$2</h4>')
+               .replace(/^(#{3})\s+(.+)$/gm, '<h3>$2</h3>')
+               .replace(/^(#{2})\s+(.+)$/gm, '<h2>$2</h2>')
+               .replace(/^(#{1})\s+(.+)$/gm, '<h1>$2</h1>');
+        // 水平线
+        md = md.replace(/^\s*[-*_]{3,}\s*$/gm, '<hr>');
+        // 引用
+        md = md.replace(/^(?:>\s?(.*))$/gm, '<blockquote><p>$1</p></blockquote>');
+        // 列表（连续项聚合）
+        md = md.replace(/(?:^(?:\s*-\s+.+)\n?)+/gm, function(block){
+            const items = block.trim().split(/\n/).map(l => l.replace(/^\s*-\s+/, '').trim());
+            return '<ul>' + items.map(i=>`<li>${i}</li>`).join('') + '</ul>';
+        });
+        md = md.replace(/(?:^(?:\s*\d+\.\s+.+)\n?)+/gm, function(block){
+            const items = block.trim().split(/\n/).map(l => l.replace(/^\s*\d+\.\s+/, '').trim());
+            return '<ol>' + items.map(i=>`<li>${i}</li>`).join('') + '</ol>';
+        });
+        // 段落：双换行分段，避免已是块级元素再次包裹
+        const blocks = md.split(/\n{2,}/).map(seg=>{
+            if (/^\s*<(h\d|ul|ol|li|pre|blockquote|hr)/i.test(seg)) return seg;
+            return '<p>' + seg.replace(/\n/g, '<br>') + '</p>';
+        });
+        let html = blocks.join('\n');
+        // 还原占位
+        html = html.replace(/\u0000(INLINE|BLOCK)(\d+)\u0000/g, (_, type, i) => placeholders[Number(i)] || '');
+        return html;
+    }
+
     // HTML转义
     function escapeHtml(text) {
         const div = document.createElement('div');
@@ -1168,6 +1243,13 @@ ${escapeHtml(selectedContent)}</textarea>
         const currentToken = CONFIG.accessToken || '';
         const currentHotkey = START_HOTKEY || '';
         const currentHotkeyEnabled = !!HOTKEY_ENABLED;
+        let currentClipIssue = '';
+        try {
+            if (typeof GM_getValue === 'function') {
+                const v = GM_getValue('cnbClipboardIssue', '');
+                currentClipIssue = (v == null) ? '' : String(v);
+            }
+        } catch (_) {}
 
         dialog.innerHTML = `
             <h3>CNB 设置</h3>
@@ -1178,6 +1260,10 @@ ${escapeHtml(selectedContent)}</textarea>
             <div>
                 <label>访问令牌 (accessToken):</label>
                 <input class="cnb-control" type="password" id="cnb-setting-token" placeholder="输入访问令牌" value="${escapeHtml(currentToken)}">
+            </div>
+            <div>
+                <label>剪贴板位置（Issue编号）:</label>
+                <input class="cnb-control" type="text" id="cnb-setting-clip-issue" placeholder="例如: 25（留空则隐藏剪贴板按钮）" value="${escapeHtml(currentClipIssue)}">
             </div>
             <div>
                 <div class="cnb-flex" style="justify-content: space-between;">
@@ -1307,6 +1393,33 @@ ${escapeHtml(selectedContent)}</textarea>
             }
             HOTKEY_ENABLED = hotkeyEnabled;
             if (typeof GM_setValue === 'function') GM_setValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
+            // 保存剪贴板位置（允许留空，留空则隐藏剪贴板按钮）
+            try {
+                const clipIssue = (dialog.querySelector('#cnb-setting-clip-issue')?.value || '').trim();
+                if (typeof GM_setValue === 'function') GM_setValue('cnbClipboardIssue', clipIssue);
+                // 即时生效：根据是否有值来动态增删“剪贴板”按钮
+                const dock = document.querySelector('.cnb-dock');
+                if (dock) {
+                    let btn = dock.querySelector('#cnb-btn-clipboard');
+                    if (clipIssue) {
+                        if (!btn) {
+                            const btnClipboard = document.createElement('button');
+                            btnClipboard.id = 'cnb-btn-clipboard';
+                            btnClipboard.className = 'cnb-dock-btn';
+                            btnClipboard.textContent = '剪贴板';
+                            btnClipboard.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                if (typeof openClipboardWindow === 'function') {
+                                    openClipboardWindow();
+                                }
+                            });
+                            dock.appendChild(btnClipboard);
+                        }
+                    } else {
+                        if (btn) btn.remove();
+                    }
+                }
+            } catch (_) {}
             if (typeof GM_notification === 'function') {
                 GM_notification({
                     text: '设置已保存',
@@ -1687,6 +1800,507 @@ ${md}`, 'text');
 
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
+    }
+
+    // 剪贴板弹窗（独立样式），展示 Issue #25
+    function openClipboardWindow() {
+        try {
+            // 注入独立样式（不复用 .cnb-issue-dialog），无遮罩，默认居中，可拖动
+            GM_addStyle(`
+                .cnb-clipwin {
+                    position: fixed;
+                    left: 50%; top: 50%;
+                    transform: translate(-50%, -50%);
+                    width: min(320px, 92vw);
+                    max-height: 80vh;
+                    display: flex; flex-direction: column;
+                    background: #ffffff;
+                    border: 1px solid #d0d7de;
+                    border-radius: 12px;
+                    box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+                    z-index: 10010;
+                    overflow: hidden;
+                    font: 14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;
+                    color: #24292f;
+                }
+                .cnb-clipwin-header {
+                    position: relative;
+                    height: 30px;
+                    border-bottom: 1px solid #eaeef2;
+                    background: linear-gradient(180deg, #fbfdff, #f6f8fa);
+                    cursor: move; /* 拖动条 */
+                }
+                .cnb-clipwin-close {
+                    position: absolute;
+                    right: 40px; top: 3px;
+                    border: none; background: transparent;
+                    color: #57606a; font-size: 18px; line-height: 1;
+                    cursor: pointer;
+                }
+                .cnb-clipwin-pin {
+                    position: absolute;
+                    right: 6px; top: 6px;
+                    border: none; background: transparent;
+                    color: #57606a; line-height: 1;
+                    cursor: pointer;
+                    padding: 2px;
+                }
+                /* 左上角标题 */
+                .cnb-clipwin-title {
+                    position: absolute;
+                    left: 8px; top: 8px;
+                    border: none; background: transparent;
+                    color: #24292f; line-height: 1; font-size: 12.5px; font-weight: 600;
+                    pointer-events: none;
+                }
+                .cnb-clipwin-close:hover, .cnb-clipwin-pin:hover { color: #24292f; }
+                .menuBar-Btn_Icon-pin.isActive { fill: #0366d6; }
+                .cnb-clipwin-content {
+                    padding: 8px 12px;
+                    overflow: auto;
+                    flex: 1 1 auto;
+                }
+                .cnb-clipwin-body {
+                    margin: 0;
+                    padding: 10px;
+                    background: #f6f8fa;
+                    border: 1px solid #d0d7de;
+                    border-radius: 8px;
+                    white-space: pre-wrap;
+                    word-break: break-word;
+                    font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+                    font-size: 12px;
+                    max-height: 60vh;
+                    overflow: auto;
+                }
+                .cnb-clipwin-actions {
+                    border-top: 1px solid #eaeef2;
+                    padding: 10px 16px;
+                    display: flex; gap: 8px; justify-content: flex-end;
+                    background: #fff;
+                }
+                .cnb-clipwin-btn {
+                    display: inline-flex; align-items: center; justify-content: center;
+                    height: 32px; padding: 0 12px; border-radius: 8px;
+                    border: 1px solid #d0d7de; background: #f6f8fa; color: #24292f;
+                    cursor: pointer; transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+                }
+                .cnb-clipwin-btn:hover { background: #eef2f6; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
+                .cnb-clipwin-btn:active { transform: translateY(1px); box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
+            `);
+        } catch (_) {}
+
+        // 覆盖剪贴板窗口内容样式，适配 HTML 渲染
+        try {
+            GM_addStyle(`
+                .cnb-clipwin-body {
+                    margin: 0;
+                    padding: 12px;
+                    background: #ffffff;
+                    border: 1px solid #e5e7eb;
+                    border-radius: 8px;
+                    word-break: break-word;
+                    font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;
+                    font-size: 13px;
+                    line-height: 1.55;
+                    color: #24292f;
+                    max-height: 65vh;
+                    overflow: auto;
+                }
+                .cnb-clipwin-body h1 { font-size: 1.75em; margin: .4em 0; }
+                .cnb-clipwin-body h2 { font-size: 1.5em; margin: .6em 0 .4em; }
+                .cnb-clipwin-body h3 { font-size: 1.25em; margin: .6em 0 .4em; }
+                .cnb-clipwin-body p  { margin: .4em 0; }
+                .cnb-clipwin-body ul, .cnb-clipwin-body ol { padding-left: 1.5em; margin: .4em 0; }
+                .cnb-clipwin-body blockquote {
+                    margin: .6em 0; padding: .4em .8em; color:#57606a; background:#f6f8fa; border-left: 4px solid #d0d7de; border-radius: 4px;
+                }
+                .cnb-clipwin-body hr { border: none; border-top: 1px solid #e5e7eb; margin: .8em 0; }
+                .cnb-clipwin-body code {
+                    background: #f6f8fa; border: 1px solid #e5e7eb; border-radius: 4px; padding: .1em .35em; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size: .92em;
+                }
+                .cnb-clipwin-body pre {
+                    background: #0b1021; color: #e6edf3; border-radius: 8px; padding: 8px 0px 8px 8px; overflow-x: hidden; overflow-y: auto;
+                }
+                .cnb-clipwin-body pre code { background: transparent; border: none; padding: 0; color: inherit; font-size: .92em; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
+                .cnb-clipwin-body a { color: #0969da; text-decoration: none; }
+                .cnb-clipwin-body a:hover { text-decoration: underline; }
+            `);
+        } catch (_) {}
+
+        if (!CONFIG.repoPath || !CONFIG.accessToken) {
+            if (typeof GM_notification === 'function') {
+                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
+            }
+            if (typeof openSettingsDialog === 'function') openSettingsDialog();
+            return;
+        }
+
+        // 仅创建窗口（无遮罩）
+        const dialog = document.createElement('div');
+        dialog.className = 'cnb-clipwin';
+        dialog.innerHTML = `
+            <div class="cnb-clipwin-header">
+                <div class="cnb-clipwin-title">剪贴板</div>
+                <button class="cnb-clipwin-pin" title="固定/取消固定">
+                    <svg class="menuBar-Btn_Icon" width="15" height="15" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 53.011 53.011">
+                        <path class="menuBar-Btn_Icon-pin" d="M52.963 21.297c-.068-.33-.297-.603-.61-.727-8.573-3.416-16.172-.665-18.36.288L19.113 8.2C19.634 3.632 17.17.508 17.06.372c-.18-.22-.442-.356-.725-.372-.282-.006-.56.09-.76.292L.32 15.546c-.202.2-.308.48-.29.765.015.285.152.55.375.727 2.775 2.202 6.35 2.167 7.726 2.055l12.722 14.953c-.868 2.23-3.52 10.27-.307 18.337.124.313.397.54.727.61.067.013.135.02.202.02.263 0 .518-.104.707-.293l14.57-14.57 13.57 13.57c.196.194.452.292.708.292s.512-.098.707-.293c.39-.392.39-1.024 0-1.415l-13.57-13.57 14.527-14.528c.237-.238.34-.58.27-.91zm-17.65 15.458L21.89 50.18c-2.437-8.005.993-15.827 1.03-15.91.158-.352.1-.764-.15-1.058L9.31 17.39c-.19-.225-.473-.352-.764-.352-.05 0-.103.004-.154.013-.036.007-3.173.473-5.794-.954l13.5-13.5c.604 1.156 1.39 3.26.964 5.848-.058。346。07。697。338。924l15.785 13.43c.31。262。748。31 1.105。128。077-.04 7.378-3.695 15.87-1.017L35.313 36.754z"></path>
+                    </svg>
+                </button>
+            </div>
+            <div class="cnb-clipwin-content">
+                <pre id="cnb-clipwin-body" class="cnb-clipwin-body">加载中…</pre>
+            </div>
+
+        `;
+
+        let pinned = false;
+
+        function cleanup() {
+            document.removeEventListener('mousedown', onDocDown, true);
+            document.removeEventListener('mouseup', onDocUp, true);
+            document.removeEventListener('mousemove', onDocMove, true);
+            document.removeEventListener('click', onOutsideClick, true);
+        }
+        function close() {
+            cleanup();
+            try { dialog.remove(); } catch (_) {}
+        }
+
+        const btnPin = dialog.querySelector('.cnb-clipwin-pin');
+        if (btnPin) btnPin.addEventListener('click', () => {
+            pinned = !pinned;
+            const path = btnPin.querySelector('.menuBar-Btn_Icon-pin');
+            if (path) {
+                if (pinned) path.classList.add('isActive');
+                else path.classList.remove('isActive');
+            }
+        });
+        // 复制按钮：复制窗口内容（优先原始 Markdown）
+        const btnCopy = dialog.querySelector('.cnb-clipwin-copy');
+        if (btnCopy) btnCopy.addEventListener('click', async () => {
+            try {
+                const body = dialog.querySelector('#cnb-clipwin-body');
+                const text = (body && body.dataset && body.dataset.mdraw) ? body.dataset.mdraw : (body ? body.textContent : '');
+                if (typeof GM_setClipboard === 'function') {
+                    GM_setClipboard(String(text || ''), 'text');
+                } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(String(text || ''));
+                }
+                if (typeof GM_notification === 'function') {
+                    GM_notification({ text: '已复制到剪贴板', title: 'CNB 剪贴板', timeout: 2000 });
+                }
+            } catch (_) {}
+        });
+
+        // 点击窗口外关闭（未固定时）
+        function onOutsideClick(e) {
+            if (pinned) return;
+            if (!dialog.contains(e.target)) close();
+        }
+        document.addEventListener('click', onOutsideClick, true);
+
+        // 拖动逻辑（拖拽 header）
+        const header = dialog.querySelector('.cnb-clipwin-header');
+        let dragging = false;
+        let startX = 0, startY = 0, boxX = 0, boxY = 0;
+
+        function onDocDown(e) {
+            if (header && header.contains(e.target)) {
+                dragging = true;
+                const rect = dialog.getBoundingClientRect();
+                startX = e.clientX;
+                startY = e.clientY;
+                boxX = rect.left;
+                boxY = rect.top;
+                // 拖动时改为绝对定位并去掉居中 transform
+                dialog.style.left = rect.left + 'px';
+                dialog.style.top = rect.top + 'px';
+                dialog.style.transform = 'none';
+            }
+        }
+        function onDocUp() {
+            dragging = false;
+        }
+        function onDocMove(e) {
+            if (!dragging) return;
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            dialog.style.left = (boxX + dx) + 'px';
+            dialog.style.top = (boxY + dy) + 'px';
+        }
+        document.addEventListener('mousedown', onDocDown, true);
+        document.addEventListener('mouseup', onDocUp, true);
+        document.addEventListener('mousemove', onDocMove, true);
+
+        document.body.appendChild(dialog);
+
+        const bodyEl = dialog.querySelector('#cnb-clipwin-body');
+
+        // 读取剪贴板位置（Issue编号）
+        let __clipIssueNum = '';
+        try {
+            if (typeof GM_getValue === 'function') {
+                const v = GM_getValue('cnbClipboardIssue', '');
+                __clipIssueNum = String(v || '').trim();
+            }
+        } catch (_) {}
+        if (!__clipIssueNum) {
+            if (bodyEl) bodyEl.textContent = '未配置剪贴板位置';
+            return;
+        }
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${encodeURIComponent(__clipIssueNum)}`;
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            headers: {
+                'Accept': 'application/json',
+                'Authorization': `${CONFIG.accessToken}`
+            },
+            responseType: 'json',
+            onload: function(res) {
+                try {
+                    if (res.status >= 200 && res.status < 300) {
+                        let data = null;
+                        try {
+                            data = (typeof res.response === 'object' && res.response !== null)
+                                ? res.response
+                                : JSON.parse(res.responseText || '{}');
+                        } catch (_) {}
+                        // 渲染后隐藏 h2，规范化 pre 间距，移除多余换行
+                        try {
+                          if (bodyEl) {
+                            // 1) 隐藏所有 h2
+                            bodyEl.querySelectorAll('h2').forEach(h => { h.style.display = 'none'; });
+                            // 2) 移除所有 <br> 与空段落（仅包含空白或单个<br>）
+                            bodyEl.querySelectorAll('br').forEach(br => br.remove());
+                            bodyEl.querySelectorAll('p').forEach(p => {
+                              const txt = (p.textContent || '').trim();
+                              const onlyBr = p.children.length === 1 && p.firstElementChild && p.firstElementChild.tagName.toLowerCase() === 'br';
+                              if (!txt || onlyBr) p.remove();
+                            });
+                            // 3) 统一设置代码块上下间距
+                            bodyEl.querySelectorAll('pre').forEach(pre => {
+                              pre.style.marginTop = '2.5px';
+                              pre.style.marginBottom = '2.5px';
+                            });
+                          }
+                        } catch (_) {}
+                        const rawBody = typeof data?.body === 'string' ? data.body : '';
+                        const md = typeof cleanMarkdownContent === 'function'
+                            ? cleanMarkdownContent(String(rawBody || ''))
+                            : String(rawBody || '');
+                        if (bodyEl) {
+                            bodyEl.dataset.mdraw = md;
+                            bodyEl.innerHTML = (typeof markdownToHtml === 'function') ? markdownToHtml(md) : md;
+                            // 移除所有 <br>，避免用换行标签作为分隔
+                            try { bodyEl.querySelectorAll('br').forEach(br => br.remove()); } catch (_) {}
+                            // 设置标题文本（优先 Issue 标题）
+                            const titleEl = dialog.querySelector('.cnb-clipwin-title');
+                            const t = (data && typeof data.title === 'string' && data.title) ? data.title : '剪贴板';
+                            if (titleEl) titleEl.textContent = t;
+                            // 为每个代码块注入右上角复制按钮，并设置布局
+                            const pres = bodyEl.querySelectorAll('pre');
+                            pres.forEach(pre => {
+                                try {
+                                    pre.style.marginTop = '5px';
+                                    pre.style.marginBottom = '5px';
+                                    pre.style.position = 'relative';
+                                    if (!pre.style.paddingRight) pre.style.paddingRight = '36px';
+                                    if (!pre.querySelector('.cnb-codecopy-inline')) {
+                                        const btn = document.createElement('button');
+                                        btn.className = 'cnb-codecopy-inline';
+                                        btn.type = 'button';
+                                        btn.title = '复制代码';
+                                        btn.setAttribute('aria-label', '复制代码');
+                                        btn.style.position = 'absolute';
+                                        btn.style.top = '6px';
+                                        btn.style.right = '6px';
+                                        btn.style.border = 'none';
+                                        btn.style.background = 'rgba(255,255,255,0.10)';
+                                        btn.style.color = '#e6edf3';
+                                        btn.style.padding = '4px';
+                                        btn.style.borderRadius = '6px';
+                                        btn.style.cursor = 'pointer';
+                                        btn.style.lineHeight = '1';
+                                        btn.style.display = 'inline-flex';
+                                        btn.style.alignItems = 'center';
+                                        btn.style.justifyContent = 'center';
+                                        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+                                        btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.18)'; btn.style.opacity = '0.95'; });
+                                        btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.10)'; btn.style.opacity = ''; });
+                                        btn.addEventListener('click', async (e) => {
+                                            e.stopPropagation();
+                                            const codeEl = pre.querySelector('code');
+                                            const text = codeEl ? codeEl.textContent : pre.textContent;
+                                            try {
+                                                if (typeof GM_setClipboard === 'function') {
+                                                    GM_setClipboard(String(text || ''), 'text');
+                                                } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                                                    await navigator.clipboard.writeText(String(text || ''));
+                                                }
+                                                if (typeof GM_notification === 'function') {
+                                                    GM_notification({ text: '代码已复制', title: 'CNB 剪贴板', timeout: 1500 });
+                                                }
+                                                // 点击反馈动画：对勾+变色+轻微放大，随后恢复
+                                                try {
+                                                    const prevHTML = btn.innerHTML;
+                                                    const prevBg = btn.style.background;
+                                                    const prevTransform = btn.style.transform;
+                                                    // 增强过渡，加入缩放动画
+                                                    const prevTransition = btn.style.transition;
+                                                    btn.style.transition = prevTransition ? (prevTransition + ', transform .12s ease') : 'transform .12s ease, background-color .15s ease, opacity .15s ease';
+                                                    // 切换对勾图标与高亮
+                                                    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2l-3.5-3.5-1.4 1.4L9 19 20.3 7.7l-1.4-1.4z"/></svg>';
+                                                    btn.style.background = 'rgba(46,160,67,0.35)'; // 绿色反馈
+                                                    btn.style.transform = 'scale(1.08)';
+                                                    setTimeout(() => {
+                                                        btn.style.transform = prevTransform || '';
+                                                        btn.style.background = prevBg || 'rgba(255,255,255,0.10)';
+                                                        btn.innerHTML = prevHTML;
+                                                        // 恢复原 transition（若有）
+                                                        if (prevTransition !== undefined) btn.style.transition = prevTransition;
+                                                    }, 700);
+                                                } catch (_) {}
+                                            } catch (_) {}
+                                        });
+                                        pre.appendChild(btn);
+                                    }
+                                } catch (_) {}
+                            });
+                        }
+                        // 基于 h2 构建章节按键并切换显示
+                        try {
+                          const contentDiv = dialog.querySelector('.cnb-clipwin-content');
+                          if (contentDiv && bodyEl) {
+                            const h2s = Array.from(bodyEl.querySelectorAll('h2'));
+                            if (h2s.length) {
+                              const sections = [];
+                              for (let i = 0; i < h2s.length; i++) {
+                                const h = h2s[i];
+                                const sec = document.createElement('div');
+                                sec.className = 'cnb-sec';
+                                // 将 h2 及其之后内容（直到下一个 h2）打包进 section
+                                h.parentNode.insertBefore(sec, h);
+                                sec.appendChild(h);
+                                let next = sec.nextSibling;
+                                while (next && !(next.nodeType === 1 && next.tagName && next.tagName.toLowerCase() === 'h2')) {
+                                  const move = next;
+                                  next = next.nextSibling;
+                                  sec.appendChild(move);
+                                }
+                                sections.push(sec);
+                              }
+                              // 在正文之前插入 tabs 容器（注入样式）
+                              try {
+                                if (typeof GM_addStyle === 'function') {
+                                  GM_addStyle(`
+                                    .cnb-clipwin-tabs {
+                                      display: flex;
+                                      flex-wrap: wrap;
+                                      gap: 6px;
+                                      margin: 6px 0 8px;
+                                    }
+                                    .cnb-tab {
+                                      appearance: none;
+                                      border: 1px solid #d0d7de;
+                                      border-radius: 9999px;
+                                      padding: 4px 10px;
+                                      background: #fff;
+                                      color: #24292f;
+                                      cursor: pointer;
+                                      font-size: 12px;
+                                      line-height: 1.2;
+                                      transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease;
+                                    }
+                                    .cnb-tab:hover {
+                                      background: #f6f8fa;
+                                      border-color: #b9c2cc;
+                                    }
+                                    .cnb-tab.active {
+                                      background: #0366d6;
+                                      color: #fff;
+                                      border-color: #0256b9;
+                                      box-shadow: 0 1px 2px rgba(2, 86, 185, .15);
+                                    }
+                                    .cnb-tab:focus {
+                                      outline: none;
+                                      box-shadow: 0 0 0 2px rgba(3,102,214,.25);
+                                    }
+                                  `);
+                                }
+                              } catch (_) {}
+                              let tabs = contentDiv.querySelector('.cnb-clipwin-tabs');
+                              if (!tabs) {
+                                tabs = document.createElement('div');
+                                tabs.className = 'cnb-clipwin-tabs';
+                                contentDiv.insertBefore(tabs, bodyEl);
+                              } else {
+                                tabs.innerHTML = '';
+                              }
+                              h2s.forEach((h, idx) => {
+                                const btn = document.createElement('button');
+                                btn.type = 'button';
+                                btn.textContent = (h.textContent || '').trim() || ('Section ' + (idx + 1));
+                                btn.className = 'cnb-tab';
+                                btn.addEventListener('click', () => {
+                                  sections.forEach((s, j) => { s.style.display = (j === idx) ? '' : 'none'; });
+                                  Array.from(tabs.children).forEach((b, i) => {
+                                    b.classList.toggle('active', i === idx);
+                                  });
+                                });
+                                tabs.appendChild(btn);
+                              });
+                              // 默认激活第一个
+                              if (tabs.firstElementChild) tabs.firstElementChild.click();
+                            }
+                          }
+                        } catch (_) {}
+                        // 渲染后隐藏 h2，并收紧 pre 间距与清理多余换行
+                        try {
+                            if (bodyEl) {
+                                // 隐藏所有 h2，去除占位
+                                bodyEl.querySelectorAll('h2').forEach(h => {
+                                    h.style.display = 'none';
+                                    h.style.margin = '0';
+                                    h.style.padding = '0';
+                                });
+                                // 移除所有 <br> 与空段落，避免形成额外间隙
+                                bodyEl.querySelectorAll('br').forEach(br => br.remove());
+                                bodyEl.querySelectorAll('p').forEach(p => {
+                                    const txt = (p.textContent || '').trim();
+                                    const onlyBr = p.children.length === 1 && p.firstElementChild && p.firstElementChild.tagName.toLowerCase() === 'br';
+                                    if (!txt || onlyBr) p.remove();
+                                });
+                                // 统一设置代码块上下间距与内边距
+                                bodyEl.querySelectorAll('pre').forEach(pre => {
+                                    pre.style.marginTop = '-17.5px';
+                                    pre.style.marginBottom = '2.5px';
+                                    pre.style.paddingTop = '6px';
+                                    pre.style.paddingBottom = '6px';
+                                });
+                                // 额外收紧：取消段落与分段容器的默认间距
+                                bodyEl.querySelectorAll('p').forEach(p => {
+                                    p.style.marginTop = '0';
+                                    p.style.marginBottom = '0';
+                                });
+                                bodyEl.querySelectorAll('.cnb-sec').forEach(sec => {
+                                    sec.style.margin = '0';
+                                    sec.style.padding = '0';
+                                });
+                            }
+                        } catch (_) {}
+                    } else {
+                        if (bodyEl) bodyEl.textContent = `加载失败: HTTP ${res.status}`;
+                    }
+                } catch (_) {
+                    if (bodyEl) bodyEl.textContent = '解析失败';
+                }
+            },
+            onerror: function() {
+                if (bodyEl) bodyEl.textContent = '网络请求失败，请稍后重试';
+            }
+        });
     }
 
     // 创建Issue
