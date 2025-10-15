@@ -19,6 +19,20 @@
 (function() {
     'use strict';
 
+    const __CNB_FLAGS = Object.create(null);
+    function addStyleOnce(key, cssText) {
+        try {
+            if (__CNB_FLAGS[key]) return;
+            if (typeof GM_addStyle === 'function') GM_addStyle(cssText);
+            __CNB_FLAGS[key] = 1;
+        } catch (_) {}
+    }
+    let __CNB_CLIP_DIALOG = null;
+    let __CNB_SETTINGS_DIALOG = null, __CNB_SETTINGS_OVERLAY = null;
+    let __CNB_ISSUE_DIALOG = null, __CNB_ISSUE_OVERLAY = null;
+    let __CNB_MO = null;
+    let __CNB_UNLOAD_BOUND = false;
+
     // 配置信息
     const CONFIG = {
         apiBase: 'https://api.cnb.cool',
@@ -1233,11 +1247,18 @@ ${escapeHtml(selectedContent)}</textarea>
 
     // 设置弹窗
     function openSettingsDialog() {
+        // 单例：若已存在，先移除旧实例
+        try {
+            if (__CNB_SETTINGS_OVERLAY && __CNB_SETTINGS_OVERLAY.parentNode) __CNB_SETTINGS_OVERLAY.remove();
+            if (__CNB_SETTINGS_DIALOG && __CNB_SETTINGS_DIALOG.parentNode) __CNB_SETTINGS_DIALOG.remove();
+        } catch (_) {}
         const overlay = document.createElement('div');
         overlay.className = 'cnb-issue-overlay';
 
         const dialog = document.createElement('div');
         dialog.className = 'cnb-issue-dialog';
+        __CNB_SETTINGS_OVERLAY = overlay;
+        __CNB_SETTINGS_DIALOG = dialog;
 
         const currentRepo = CONFIG.repoPath || '';
         const currentToken = CONFIG.accessToken || '';
@@ -1370,6 +1391,8 @@ ${escapeHtml(selectedContent)}</textarea>
         const close = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
             if (document.body.contains(dialog)) document.body.removeChild(dialog);
+            __CNB_SETTINGS_OVERLAY = null;
+            __CNB_SETTINGS_DIALOG = null;
         };
 
         dialog.querySelector('.cnb-issue-btn-cancel').addEventListener('click', close);
@@ -1436,6 +1459,11 @@ ${escapeHtml(selectedContent)}</textarea>
 
     // Issue 列表弹窗
     function openIssueList() {
+        // 单例：若已存在，先移除旧实例
+        try {
+            if (__CNB_ISSUE_OVERLAY && __CNB_ISSUE_OVERLAY.parentNode) __CNB_ISSUE_OVERLAY.remove();
+            if (__CNB_ISSUE_DIALOG && __CNB_ISSUE_DIALOG.parentNode) __CNB_ISSUE_DIALOG.remove();
+        } catch (_) {}
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
             if (typeof GM_notification === 'function') {
                 GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
@@ -1446,9 +1474,11 @@ ${escapeHtml(selectedContent)}</textarea>
 
         const overlay = document.createElement('div');
         overlay.className = 'cnb-issue-overlay';
+        __CNB_ISSUE_OVERLAY = overlay;
 
         const dialog = document.createElement('div');
         dialog.className = 'cnb-issue-dialog';
+        __CNB_ISSUE_DIALOG = dialog;
 
         dialog.innerHTML = `
             <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:12px; top:12px; border:none; background:transparent; color:#666; font-size:18px; line-height:1; cursor:pointer;">×</button>
@@ -1505,6 +1535,8 @@ ${escapeHtml(selectedContent)}</textarea>
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
             if (document.body.contains(dialog)) document.body.removeChild(dialog);
             document.removeEventListener('keydown', onEsc, true);
+            __CNB_ISSUE_OVERLAY = null;
+            __CNB_ISSUE_DIALOG = null;
         };
         overlay.addEventListener('click', close);
         if (closeBtn) closeBtn.addEventListener('click', close);
@@ -1804,9 +1836,11 @@ ${md}`, 'text');
 
     // 剪贴板弹窗（独立样式），展示 Issue #25
     function openClipboardWindow() {
+        // 单例：若已存在旧窗口，先移除
+        try { if (__CNB_CLIP_DIALOG && __CNB_CLIP_DIALOG.parentNode) __CNB_CLIP_DIALOG.remove(); } catch (_) {}
         try {
             // 注入独立样式（不复用 .cnb-issue-dialog），无遮罩，默认居中，可拖动
-            GM_addStyle(`
+            addStyleOnce('clipwin-base', `
                 .cnb-clipwin {
                     position: fixed;
                     left: 50%; top: 50%;
@@ -1892,7 +1926,7 @@ ${md}`, 'text');
 
         // 覆盖剪贴板窗口内容样式，适配 HTML 渲染
         try {
-            GM_addStyle(`
+            addStyleOnce('clipwin-body', `
                 .cnb-clipwin-body {
                     margin: 0;
                     padding: 12px;
@@ -1976,6 +2010,7 @@ ${md}`, 'text');
         // 仅创建窗口（无遮罩）
         const dialog = document.createElement('div');
         dialog.className = 'cnb-clipwin';
+        __CNB_CLIP_DIALOG = dialog;
         dialog.innerHTML = `
             <div class="cnb-clipwin-header">
                 <div class="cnb-clipwin-title">剪贴板</div>
@@ -2002,6 +2037,7 @@ ${md}`, 'text');
         function close() {
             cleanup();
             try { dialog.remove(); } catch (_) {}
+            try { if (__CNB_CLIP_DIALOG === dialog) __CNB_CLIP_DIALOG = null; } catch (_) {}
         }
 
         const btnPin = dialog.querySelector('.cnb-clipwin-pin');
@@ -2104,25 +2140,7 @@ ${md}`, 'text');
                                 ? res.response
                                 : JSON.parse(res.responseText || '{}');
                         } catch (_) {}
-                        // 渲染后隐藏 h2，规范化 pre 间距，移除多余换行
-                        try {
-                          if (bodyEl) {
-                            // 1) 隐藏所有 h2
-                            bodyEl.querySelectorAll('h2').forEach(h => { h.style.display = 'none'; });
-                            // 2) 移除所有 <br> 与空段落（仅包含空白或单个<br>）
-                            bodyEl.querySelectorAll('br').forEach(br => br.remove());
-                            bodyEl.querySelectorAll('p').forEach(p => {
-                              const txt = (p.textContent || '').trim();
-                              const onlyBr = p.children.length === 1 && p.firstElementChild && p.firstElementChild.tagName.toLowerCase() === 'br';
-                              if (!txt || onlyBr) p.remove();
-                            });
-                            // 3) 统一设置代码块上下间距
-                            bodyEl.querySelectorAll('pre').forEach(pre => {
-                              pre.style.marginTop = '2.5px';
-                              pre.style.marginBottom = '2.5px';
-                            });
-                          }
-                        } catch (_) {}
+
                         const rawBody = typeof data?.body === 'string' ? data.body : '';
                         const md = typeof cleanMarkdownContent === 'function'
                             ? cleanMarkdownContent(String(rawBody || ''))
@@ -2204,7 +2222,7 @@ ${md}`, 'text');
                         // 行为增强：为每个代码块提供“两行预览 + 展开/收起”，复制仍复制全文
                         try {
                           if (typeof GM_addStyle === 'function') {
-                            GM_addStyle(`
+                            addStyleOnce('clipwin-pre-controls', `
                               .cnb-pre-collapsed {
                                 max-height: 3.2em; /* 约两行 */
                                 overflow: hidden;
@@ -2440,47 +2458,7 @@ ${md}`, 'text');
 
         const apiUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}`;
 
-        // 注入筛选按钮样式（pill 风格）
-        GM_addStyle(`
-            .cnb-issue-filter {
-                display:flex;
-                flex-wrap:wrap;
-                gap:6px;
-            }
-            .cnb-issue-filter-btn {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                padding: 4px 10px;
-                border: 1px solid #d0d7de;
-                border-radius: 9999px;
-                background: #fff;
-                color: #24292f;
-                font-size: 13px;
-                line-height: 1.2;
-                white-space: nowrap;
-                vertical-align: middle;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.04);
-                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease;
-                cursor: pointer;
-                user-select: none;
-            }
-            .cnb-issue-filter-btn:hover {
-                background: #f6f8fa;
-                border-color: #afb8c1;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.06);
-            }
-            .cnb-issue-filter-btn:active {
-                transform: translateY(1px);
-                box-shadow: 0 1px 0 rgba(27,31,36,0.08);
-            }
-            .cnb-issue-filter-btn.active {
-                background: #0366d6;
-                border-color: #0256b9;
-                color: #fff;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.05);
-            }
-        `);
+
 
         GM_xmlhttpRequest({
             method: 'POST',
@@ -2746,7 +2724,7 @@ ${md}`, 'text');
             document.addEventListener('click', cnbGotoClickHandler, true);
             // 监听后续动态内容
             try {
-                const mo = new MutationObserver(mutations => {
+                __CNB_MO = new MutationObserver(mutations => {
                     for (const m of mutations) {
                         m.addedNodes && m.addedNodes.forEach(node => {
                             if (node.nodeType === Node.ELEMENT_NODE) {
@@ -2755,7 +2733,16 @@ ${md}`, 'text');
                         });
                     }
                 });
-                mo.observe(document.documentElement || document.body, { childList: true, subtree: true });
+                __CNB_MO.observe(document.documentElement || document.body, { childList: true, subtree: true });
+                try {
+                    if (!__CNB_UNLOAD_BOUND) {
+                        window.addEventListener('beforeunload', () => {
+                            try { if (__CNB_MO) { __CNB_MO.disconnect(); __CNB_MO = null; } } catch (_) {}
+                            try { if (__CNB_CLIP_DIALOG && __CNB_CLIP_DIALOG.parentNode) { __CNB_CLIP_DIALOG.remove(); __CNB_CLIP_DIALOG = null; } } catch (_) {}
+                        }, { once: true });
+                        __CNB_UNLOAD_BOUND = true;
+                    }
+                } catch (_) {}
             } catch (_) {}
         }
 
