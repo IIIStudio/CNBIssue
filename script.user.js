@@ -1927,6 +1927,43 @@ ${md}`, 'text');
                 .cnb-clipwin-body a:hover { text-decoration: underline; }
             `);
         } catch (_) {}
+        /* 剪贴板窗口滚动条样式：细黑条（仅作用于剪贴板窗口） */
+        try {
+            GM_addStyle(`
+                /* Firefox */
+                .cnb-clipwin, .cnb-clipwin-content, .cnb-clipwin-body, .cnb-clipwin-body pre {
+                    scrollbar-width: thin;
+                    scrollbar-color: #000 transparent;
+                }
+                /* WebKit */
+                .cnb-clipwin::-webkit-scrollbar,
+                .cnb-clipwin-content::-webkit-scrollbar,
+                .cnb-clipwin-body::-webkit-scrollbar,
+                .cnb-clipwin-body pre::-webkit-scrollbar {
+                    width: 3px;
+                    height: 3px;
+                }
+                .cnb-clipwin::-webkit-scrollbar-track,
+                .cnb-clipwin-content::-webkit-scrollbar-track,
+                .cnb-clipwin-body::-webkit-scrollbar-track,
+                .cnb-clipwin-body pre::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+                .cnb-clipwin::-webkit-scrollbar-thumb,
+                .cnb-clipwin-content::-webkit-scrollbar-thumb,
+                .cnb-clipwin-body::-webkit-scrollbar-thumb,
+                .cnb-clipwin-body pre::-webkit-scrollbar-thumb {
+                    background: #000000;
+                    border-radius: 2px;
+                }
+                .cnb-clipwin::-webkit-scrollbar-thumb:hover,
+                .cnb-clipwin-content::-webkit-scrollbar-thumb:hover,
+                .cnb-clipwin-body::-webkit-scrollbar-thumb:hover,
+                .cnb-clipwin-body pre::-webkit-scrollbar-thumb:hover {
+                    background: #000000;
+                }
+            `);
+        } catch (_) {}
 
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
             if (typeof GM_notification === 'function') {
@@ -2108,24 +2145,19 @@ ${md}`, 'text');
                                     pre.style.position = 'relative';
                                     if (!pre.style.paddingRight) pre.style.paddingRight = '36px';
                                     if (!pre.querySelector('.cnb-codecopy-inline')) {
+                                        // 确保右上角控制容器（同一父容器，便于排列“展开”与“复制”）
+                                        let controls = pre.querySelector('.cnb-code-controls');
+                                        if (!controls) {
+                                            controls = document.createElement('div');
+                                            controls.className = 'cnb-code-controls';
+                                            pre.appendChild(controls);
+                                        }
                                         const btn = document.createElement('button');
                                         btn.className = 'cnb-codecopy-inline';
                                         btn.type = 'button';
                                         btn.title = '复制代码';
                                         btn.setAttribute('aria-label', '复制代码');
-                                        btn.style.position = 'absolute';
-                                        btn.style.top = '4px';
-                                        btn.style.right = '6px';
-                                        btn.style.border = 'none';
-                                        btn.style.background = 'rgba(255,255,255,0.10)';
-                                        btn.style.color = '#e6edf3';
-                                        btn.style.padding = '4px';
-                                        btn.style.borderRadius = '6px';
-                                        btn.style.cursor = 'pointer';
-                                        btn.style.lineHeight = '1';
-                                        btn.style.display = 'inline-flex';
-                                        btn.style.alignItems = 'center';
-                                        btn.style.justifyContent = 'center';
+                                        // 样式由 .cnb-code-controls 统一提供
                                         btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
                                         btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.18)'; btn.style.opacity = '0.95'; });
                                         btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.10)'; btn.style.opacity = ''; });
@@ -2164,7 +2196,7 @@ ${md}`, 'text');
                                                 } catch (_) {}
                                             } catch (_) {}
                                         });
-                                        pre.appendChild(btn);
+                                        controls.appendChild(btn);
                                     }
                                 } catch (_) {}
                             });
@@ -2186,18 +2218,33 @@ ${md}`, 'text');
                                 background: linear-gradient(to bottom, rgba(11,16,33,0), rgba(11,16,33,0.85));
                                 pointer-events: none;
                               }
-                              .cnb-code-toggle {
+                              /* 顶部右侧控制容器：右为复制，左为展开 */
+                              .cnb-code-controls {
                                 position: absolute;
-                                right: 32px; bottom: 11px;
+                                top: 4px;
+                                right: 6px;
+                                display: inline-flex;
+                                align-items: center;
+                                gap: 6px;
+                              }
+                              .cnb-code-controls .cnb-codecopy-inline,
+                              .cnb-code-controls .cnb-code-toggle {
                                 border: none;
                                 background: rgba(255,255,255,0.10);
                                 color: #e6edf3;
-                                padding: 3px 6px;
+                                padding: 4px 6px;
                                 border-radius: 6px;
                                 cursor: pointer;
+                                line-height: 1;
+                                display: inline-flex;
+                                align-items: center;
+                                justify-content: center;
                                 font-size: 12px;
                               }
-                              .cnb-code-toggle:hover { background: rgba(255,255,255,0.18); }
+                              .cnb-code-controls .cnb-codecopy-inline:hover,
+                              .cnb-code-controls .cnb-code-toggle:hover {
+                                background: rgba(255,255,255,0.18);
+                              }
                             `);
                           }
                         } catch (_) {}
@@ -2212,6 +2259,14 @@ ${md}`, 'text');
                               // 初始折叠为两行
                               pre.classList.add('cnb-pre-collapsed');
                               // 若不存在展开按钮则添加
+                              /* 将展开按钮插入到右上角控制容器中，位于复制按钮左侧 */
+                              // 确保控制容器存在
+                              let __controls = pre.querySelector('.cnb-code-controls');
+                              if (!__controls) {
+                                __controls = document.createElement('div');
+                                __controls.className = 'cnb-code-controls';
+                                pre.appendChild(__controls);
+                              }
                               if (!pre.querySelector('.cnb-code-toggle')) {
                                 const tbtn = document.createElement('button');
                                 tbtn.type = 'button';
@@ -2223,7 +2278,9 @@ ${md}`, 'text');
                                   const collapsed = pre.classList.toggle('cnb-pre-collapsed');
                                   tbtn.textContent = collapsed ? '展开' : '收起';
                                 });
-                                pre.appendChild(tbtn);
+                                const copyBtn = __controls.querySelector('.cnb-codecopy-inline');
+                                if (copyBtn) __controls.insertBefore(tbtn, copyBtn);
+                                else __controls.appendChild(tbtn);
                               }
                             } catch (_) {}
                           });
