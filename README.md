@@ -28,7 +28,7 @@
     > 使用方式 在设置里面设置 剪贴板位置（Issue编号）:，例如2，格式为：https://cnb.cool/IIIStudio/Demo/-/issues/2 这样的，## 测试 为按键，代码行一行一个。
     > 可拖动可固定，可自定义剪贴板内容，可切换不同的ISSUE id
     > 默认是关闭，需要填写ISSUE id才行，格式需要正确。
-    ![](./image/14.jpg)
+    ![](https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/14.jpg)
 - ### 1.2.5
     - 添加 Ctrl + 左键 多选
 - ### 1.2.4
@@ -39,7 +39,7 @@
     - 添加 列表点击复制可以复制标题与内容，内容并转换为md，复制到剪贴板
     - 修改 修复标题过长问题，最长45个字符。
 
-![](./image/13.jpg)
+![](https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/13.jpg)
 
 - ### 1.2.1
     - 添加 列表（完成状态才显示！）
@@ -79,11 +79,11 @@ IIIStudio/Demo
 
 通过筛选标签分类。
 
-![](./image/7.jpg)
-![](./image/8.jpg)
+![](https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/7.jpg)
+![](https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/8.jpg)
 
 ## 图片
 
-![](./image/9.jpg)
-![](./image/10.jpg)
-![](./image/11.jpg)
+![](https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/9.jpg)
+![](https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/10.jpg)
+![](https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/11.jpg)
