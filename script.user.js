@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         CNB Issue 区域选择工具
+// @name         CNB Issue 区域选择工具 收藏夹
 // @namespace    http://tampermonkey.net/
 // @version      1.3.1
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
