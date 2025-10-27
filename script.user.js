@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.3.2
+// @version      1.3.3
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -1177,6 +1177,10 @@ ${escapeHtml(selectedContent)}</textarea>
     // 清理Markdown内容
     function cleanMarkdownContent(markdown) {
         return markdown
+            // 删除表情图片（以 ![:grimacing:] 格式）
+            .replace(/!\[:[^\]]+\]\([^)]+\)/g, '')
+            // 将复杂图片链接格式转换为纯图片格式
+            .replace(/\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]+\)/g, '![$1]($2)')
             .replace(/\n{3,}/g, '\n\n') // 多个空行合并为两个
 
             .replace(/^\s+|\s+$/g, ''); // 去除首尾空白
@@ -2652,6 +2656,29 @@ ${md}`, 'text');
                 location.replace(target);
             }
         }
+    }
+
+    // 将页面内所有 数字?url= 链接批量改写为直链
+    function rewriteCnbGotoLinks(root = document) {
+        try {
+            const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
+            if (!isCNB) return;
+
+            // 匹配包含数字路径和url参数的链接
+            const list = root.querySelectorAll('a[href*="?url="]');
+            list.forEach(a => {
+                try {
+                    const href = a.getAttribute('href') || '';
+                    const absUrl = new URL(href, location.href).href;
+
+                    // 检查是否符合数字路径+url参数的模式
+                    if (absUrl.includes('cnb.cool/') && /\/(\d+)\?url=/i.test(absUrl)) {
+                        const t = getCnbGotoTarget(absUrl);
+                        if (t) a.href = t;
+                    }
+                } catch (_) {}
+            });
+        } catch (_) {}
     }
 
     // 事件委托兜底：拦截点击数字跳转链接并直接打开目标
