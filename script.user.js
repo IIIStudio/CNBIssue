@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         CNB Issue 区域选择工具 收藏夹
+// @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.3.1
+// @version      1.3.2
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -19,6 +19,7 @@
 (function() {
     'use strict';
 
+    // 内存与样式注入防重、窗口/观察者单例
     const __CNB_FLAGS = Object.create(null);
     function addStyleOnce(key, cssText) {
         try {
@@ -2617,7 +2618,7 @@ ${md}`, 'text');
         });
     }
 
-    // 直达目标解码：获取 cnb.cool /goto?url= 的目标地址
+    // 直达目标解码：获取 cnb.cool /数字?url= 的目标地址
     function getCnbGotoTarget(urlLike) {
         try {
             const u = new URL(urlLike, location.href);
@@ -2637,11 +2638,14 @@ ${md}`, 'text');
         }
     }
 
-    // 若当前位于 cnb.cool 的 /goto 跳转页，立即重定向到真实目标
+    // 若当前位于 cnb.cool 的数字跳转页，立即重定向到真实目标
     function handleCnbGotoPage() {
         const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
         if (!isCNB) return;
-        if (location.pathname === '/goto') {
+
+        // 匹配路径为 /数字 的格式
+        const pathMatch = location.pathname.match(/^\/(\d+)$/);
+        if (pathMatch && location.search.includes('url=')) {
             const target = getCnbGotoTarget(location.href);
             if (target) {
                 // 不留历史记录
@@ -2650,23 +2654,11 @@ ${md}`, 'text');
         }
     }
 
-    // 将页面内所有 /goto?url= 链接批量改写为直链
-    function rewriteCnbGotoLinks(root = document) {
-        try {
-            const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
-            if (!isCNB) return;
-            const list = root.querySelectorAll('a[href*="/goto?url="], a[href^="/goto?url="], a[href^="https://cnb.cool/goto?url="]');
-            list.forEach(a => {
-                const t = getCnbGotoTarget(a.href);
-                if (t) a.href = t;
-            });
-        } catch (_) {}
-    }
-
-    // 事件委托兜底：拦截点击 /goto?url= 的链接并直接打开目标
+    // 事件委托兜底：拦截点击数字跳转链接并直接打开目标
     function cnbGotoClickHandler(e) {
         const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
         if (!isCNB) return;
+
         // 仅关心主按钮/中键点击到 <a>
         let el = e.target;
         while (el && el !== document && !(el instanceof HTMLAnchorElement)) {
@@ -2675,9 +2667,11 @@ ${md}`, 'text');
         if (!(el instanceof HTMLAnchorElement)) return;
 
         const href = el.getAttribute('href') || '';
-        // 使用绝对地址判断，以覆盖相对路径
+        // 使用绝对地址判断
         const abs = (new URL(href, location.href)).href;
-        if (!/\/goto\?url=/i.test(abs)) return;
+
+        // 匹配数字路径+url参数的模式
+        if (!/\/(\d+)\?url=/i.test(abs)) return;
 
         const target = getCnbGotoTarget(abs);
         if (!target) return;
