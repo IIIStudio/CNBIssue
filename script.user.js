@@ -86,6 +86,7 @@
             max-width: 90vw;
             max-height: 80vh;
             overflow: auto;
+            max-width: 450px;
         }
         .cnb-issue-dialog h3 {
             margin: 0 0 15px 0;
@@ -301,8 +302,8 @@
         .cnb-issue-dialog textarea.cnb-control {
             box-sizing: border-box !important;
             width: 100% !important;
-            margin: 10px 0 !important;
-            padding: 8px 10px !important;
+            margin: 4px 0 !important;
+            padding: 4px 10px !important;
             border: 1px solid #ccc !important;
             border-radius: 4px !important;
             background: #fff !important;
