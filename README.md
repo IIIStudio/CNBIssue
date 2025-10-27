@@ -21,6 +21,10 @@
 **演示效果：https://cnb.cool/IIIStudio/Demo/-/issues?q=state%3Aclosed**
 
 ## 更新日志
+- ### 1.3.3
+    - 优化linux.do图片链接 删除标签图片
+- ### 1.3.2
+    - 修复cnb跳转
 - ### 1.3.1
     - 添加 剪贴板代码多行折叠
 - ### 1.3
