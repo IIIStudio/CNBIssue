@@ -20,6 +20,20 @@
 
 **演示效果：https://cnb.cool/IIIStudio/Demo/-/issues?q=state%3Aclosed**
 
+数据集：https://cnb.cool/IIIStudio/DemoPP
+
+## 剪贴板使用说明
+产考数据：https://cnb.cool/IIIStudio/Demo/-/issues/2
+```text
+## 分类按键
+下面就是代码块
+例如：
+#```py
+#这是复制的内容
+#```
+```
+> **里面的#不需要**，那是演示，放在渲染。
+
 ## 更新日志
 - ### 1.3.3
     - 优化linux.do图片链接 删除标签图片
