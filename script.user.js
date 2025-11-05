@@ -584,10 +584,19 @@
                     return `\`\`\`${language}\n${raw}\n\`\`\`\n\n`;
                 case 'a':
                     const href = node.getAttribute('href') || '';
-                    if (href) {
-                        return `[${childrenContent}](${href})`;
+                    // 提取可见文本（去掉空白）
+                    const visibleText = (childrenContent || '').replace(/\s+/g, '');
+                    // 规则：
+                    // 1) 如果 href 为空：仅返回子内容（可能有内嵌 strong/img 等）
+                    // 2) 如果 href 以 '#' 开头且无可见文本（通常是锚点图标/空链接）：丢弃该链接，仅返回子内容，避免生成 [](#...)
+                    // 3) 其他情况：按 [text](href) 输出。
+                    if (!href) {
+                        return childrenContent;
                     }
-                    return childrenContent;
+                    if (href.startsWith('#') && visibleText.length === 0) {
+                        return '';
+                    }
+                    return `[${childrenContent}](${href})`;
                 case 'img':
                     const src = node.getAttribute('src') || '';
                     const alt = node.getAttribute('alt') || '';
