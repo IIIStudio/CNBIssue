@@ -24,6 +24,8 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 
 数据集：https://cnb.cool/IIIStudio/DemoPP
 
+**Wiki：https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/wiki**
+
 ## 剪贴板使用说明
 产考数据：https://cnb.cool/IIIStudio/Demo/-/issues/2
 ```text
