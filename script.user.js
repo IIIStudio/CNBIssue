@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 区域选择工具
 // @namespace    http://tampermonkey.net/
-// @version      1.3.3
+// @version      1.3.4
 // @description  选择页面区域并转换为Markdown发送到CNB创建Issue
 // @author       IIIStudio
 // @match        *://*/*
@@ -522,7 +522,9 @@
         cleanUnwantedElements: function(element) {
             const unwantedSelectors = [
                 'script', 'style', 'noscript', 'link', 'meta',
-                '.ads', '.advertisement', '[class*="ad"]',
+                // 广告相关（更安全的选择器，避免误伤 heading/markdown/header 等）
+                '.ads', '.advertisement', '[class*="advert"]', '[id*="advert"]', '[id^="ad-"]', '[id^="ads-"]',
+                // 隐藏元素
                 '.hidden', '[style*="display:none"]', '[style*="display: none"]'
             ];
 
@@ -625,6 +627,21 @@
 
                     return tableContent + '\n';
                 case 'div':
+                case 'section':
+                case 'article':
+                case 'main':
+                case 'header':
+                case 'footer':
+                case 'nav':
+                case 'aside':
+                    // 当容器中含有标题元素时，确保子内容以换行分隔，避免标题不在行首而无法识别
+                    try {
+                        const hasHeading = typeof node.querySelector === 'function' && node.querySelector('h1, h2, h3, h4, h5, h6');
+                        if (hasHeading) {
+                            const joined = children.map(child => this.processNode(child)).join('\n');
+                            return `\n${joined}\n`;
+                        }
+                    } catch (_) {}
                     return `${childrenContent}\n`;
                 default:
                     return childrenContent;
