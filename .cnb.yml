@@ -7,6 +7,18 @@ $:
       services:
         - vscode  # 启用 VSCode 远程开发服务
         - docker  # 启用 dind 服务（用于构建镜像等操作）
+  tag_push:
+    - services:
+        - docker
+      docker:
+        volumes:
+          - /data/codewiki/${CNB_REPO_SLUG}:data
+      stages:
+        - name: 生成 Code Wiki
+          timeout: 2h
+          image: cnbcool/codewiki:latest
+          settings:
+            git_doc_dir: /data/codewiki/${CNB_REPO_SLUG}
 
 # 构建并推送镜像的任务（原有的 push 配置保留）
 main:
