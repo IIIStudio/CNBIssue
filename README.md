@@ -18,7 +18,7 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 
 请打开：https://cnb.cool/wget/i/issueblog
 
-项目预览：https://api.nocode.host
+项目预览：https://cnb.nocode.host/#/repo/IIIStudio/Demo?tag=codeissue
 
 **演示效果：https://cnb.cool/IIIStudio/Demo/-/issues?q=state%3Aclosed**
 
@@ -37,6 +37,8 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 > **里面的#不需要**，那是演示，放在渲染。
 
 ## 更新日志
+- ### 1.3.4
+    - 修复多层div不显示h标签问题
 - ### 1.3.3
     - 优化linux.do图片链接 删除标签图片
 - ### 1.3.2
