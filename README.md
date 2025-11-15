@@ -4,30 +4,10 @@
 
 B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 
-> 你还在烦劳在 DeepSeek 上面或者其他ai回复之后没有收藏功能吗？现在有了，直接选择区域内容转入到CNB。
 
-> 你可以把文章发布在CNB Issue上，然后你去其他网站，你打开列表，找到你要发布的文章，然后点击复制，然后粘贴到你发布的网站上去，你也可以把内容快速的分享给别人。
-
-> 其实这是一个捡垃圾的脚本！
-
-> **因为我查看文档api发现展示无法新建标签，所以添加标签只能在CNB添加之后，才能在脚本页面添加标签才生效。**
-
-> **不会写代码怎么办！没事可以使用复制粘贴！去自定义你的剪贴板吧！**
-
-**如果是自动化生成网站呢！！！**
-
-请打开：https://cnb.cool/wget/i/issueblog
-
-项目预览：https://cnb.nocode.host/#/repo/IIIStudio/Demo?tag=codeissue
-
-**演示效果：https://cnb.cool/IIIStudio/Demo/-/issues?q=state%3Aclosed**
-
-数据集：https://cnb.cool/IIIStudio/DemoPP
-
-**Wiki：https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/wiki**
 
 ## 剪贴板使用说明
-产考数据：https://cnb.cool/IIIStudio/Demo/-/issues/2
+
 ```text
 ## 分类按键
 下面就是代码块
@@ -91,23 +71,3 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 **标签是需要你在 -/labels 管理标签中先设置好**，然后在设置中输入标签然后回车，这样就可以使用了
 
 然后点击 创建Issue
-
-## 其他玩法
-
-创建一个数据集
-
-数据范围*
-IIIStudio/Demo
-
-例如：https://cnb.cool/IIIStudio/DemoPP
-
-通过筛选标签分类。
-
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/7.jpg)
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/8.jpg)
-
-## 图片
-
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/9.jpg)
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/10.jpg)
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/11.jpg)
