@@ -32,7 +32,7 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
     > 使用方式 在设置里面设置 剪贴板位置（Issue编号）:，例如2，格式为：https://cnb.cool/IIIStudio/Demo/-/issues/2 这样的，## 测试 为按键，代码行一行一个。
     > 可拖动可固定，可自定义剪贴板内容，可切换不同的ISSUE id
     > 默认是关闭，需要填写ISSUE id才行，格式需要正确。
-    ![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/14.jpg)
+    ![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/15.jpg)
 - ### 1.2.5
     - 添加 Ctrl + 左键 多选
 - ### 1.2.4
