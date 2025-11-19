@@ -2,6 +2,8 @@
 
 一个 Tampermonkey（油猴）脚本，可在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，并按"页面信息 + 选择的内容"格式展示，支持通过 CNB 接口直接创建 Issue存储在CNB中。
 
+B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
+
 ## 功能特点
 
 - 🔍 **智能区域选择** - 可视化选择网页任意区域
