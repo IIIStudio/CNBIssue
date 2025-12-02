@@ -112,6 +112,6 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 
 ## 图片
 
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/13.jpg)
+![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue@main/image/13.jpg)
 
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue/-/git/raw/main/image/15.jpg)
+![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue@main/image/15.jpg)
