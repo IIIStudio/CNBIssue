@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.3.5
-// @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按“页面信息 + 选择的内容”的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
+// @version      1.3.6
+// @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -21,6 +21,7 @@
 
     // 内存与样式注入防重、窗口/观察者单例
     const __CNB_FLAGS = Object.create(null);
+    // 统一的样式注入函数 - 避免重复代码
     function addStyleOnce(key, cssText) {
         try {
             if (__CNB_FLAGS[key]) return;
@@ -46,130 +47,260 @@
     let START_HOTKEY = 'Shift+E';
     let HOTKEY_ENABLED = false;
 
-    // 添加自定义样式
+    // 统一的通知函数 - 减少重复代码
+    function showNotification(text, title = 'CNB Issue工具', timeout = 3000) {
+        if (typeof GM_notification === 'function') {
+            GM_notification({ text, title, timeout });
+        }
+    }
+
+    // 统一的CSS样式注入 - 避免样式冲突
+    function injectCommonStyles() {
+        addStyleOnce('cnb-common-styles', `
+            /* 基础对话框和遮罩样式 */
+            #cnb-issue-overlay, #cnb-settings-overlay, #cnb-issue-list-overlay {
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                width: 100% !important;
+                height: 100% !important;
+                background: rgba(0,0,0,0.5) !important;
+                z-index: 10000 !important;
+            }
+
+            /* 按钮基础样式 */
+            #cnb-issue-btn-confirm, #cnb-issue-btn-cancel, #cnb-issue-btn-done,
+            #cnb-settings-btn-confirm, #cnb-settings-btn-cancel {
+                padding: 8px 16px !important;
+                border: none !important;
+                border-radius: 4px !important;
+                cursor: pointer !important;
+                font-size: 14px !important;
+                transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
+            }
+
+            #cnb-issue-btn-confirm, #cnb-settings-btn-confirm {
+                background: #0366d6 !important;
+                color: #fff !important;
+            }
+            #cnb-issue-btn-confirm:hover, #cnb-settings-btn-confirm:hover {
+                background: #0256b9 !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
+            }
+
+            #cnb-issue-btn-cancel, #cnb-settings-btn-cancel {
+                background: #6c757d !important;
+                color: #fff !important;
+            }
+            #cnb-issue-btn-cancel:hover, #cnb-settings-btn-cancel:hover {
+                background: #5a6268 !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
+            }
+
+            #cnb-issue-btn-done {
+                background: #28a745 !important;
+                color: #fff !important;
+            }
+            #cnb-issue-btn-done:hover {
+                background: #218838 !important;
+                box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important;
+            }
+
+            #cnb-issue-btn-confirm:active, #cnb-issue-btn-cancel:active, #cnb-issue-btn-done:active,
+            #cnb-settings-btn-confirm:active, #cnb-settings-btn-cancel:active {
+                transform: translateY(1px) scale(0.98) !important;
+                box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+            }
+        `);
+    }
+
+    // 添加自定义样式 - 使用 ID 选择器避免冲突
     GM_addStyle(`
-        .cnb-issue-floating-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-            background: #0366d6;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.3s ease;
+        #cnb-issue-floating-btn {
+            position: fixed !important;
+            top: 20px !important;
+            right: 20px !important;
+            z-index: 10000 !important;
+            background: #0366d6 !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 50% !important;
+            width: 50px !important;
+            height: 50px !important;
+            cursor: pointer !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
+            font-size: 20px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: all 0.3s ease !important;
         }
-        .cnb-issue-floating-btn:hover {
-            background: #0256b9;
-            transform: scale(1.1);
+        #cnb-issue-floating-btn:hover {
+            background: #0256b9 !important;
+            transform: scale(1.1) !important;
         }
-        .cnb-issue-dialog {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            z-index: 10001;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            min-width: 500px;
-            max-width: 90vw;
-            max-height: 80vh;
-            overflow: auto;
-            max-width: 450px;
+        #cnb-issue-dialog {
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            background: white !important;
+            border: 1px solid #ddd !important;
+            border-radius: 8px !important;
+            padding: 20px !important;
+            z-index: 10001 !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important;
+            min-width: 450px !important;
+            max-width: 90vw !important;
+            max-height: 80vh !important;
+            overflow: auto !important;
         }
-        .cnb-issue-dialog h3 {
-            margin: 0 0 15px 0;
-            color: #333;
+        .cnb-dialog-title {
+            margin: 0 0 15px 0 !important;
+            color: #333 !important;
+            font-size: 18px !important;
+            font-weight: 600 !important;
         }
-        .cnb-issue-dialog textarea {
-            width: 100%;
-            height: 300px;
-            margin: 10px 0;
-            padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            resize: vertical;
-            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-            font-size: 12px;
-            line-height: 1.4;
+        #cnb-issue-dialog label,
+        #cnb-settings-dialog label,
+        #cnb-issue-list-dialog label {
+            display: block !important;
+            margin-bottom: 4px !important;
+            color: #24292f !important;
+            font-weight: 600 !important;
+            font-size: 14px !important;
         }
-        .cnb-issue-dialog input {
-            width: 100%;
-            margin: 10px 0;
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+        #cnb-issue-dialog textarea {
+            display: block !important;
+            width: 100% !important;
+            height: 300px !important;
+            margin: 10px 0 !important;
+            padding: 10px !important;
+            border: 1px solid #ccc !important;
+            border-radius: 4px !important;
+            resize: vertical !important;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace !important;
+            font-size: 12px !important;
+            line-height: 1.4 !important;
+            box-sizing: border-box !important;
         }
-        .cnb-issue-dialog-buttons {
-            display: flex;
-            justify-content: flex-end;
-            gap: 10px;
-            margin-top: 15px;
+        #cnb-issue-dialog input {
+            display: block !important;
+            width: 100% !important;
+            margin: 10px 0 !important;
+            padding: 8px !important;
+            border: 1px solid #ccc !important;
+            border-radius: 4px !important;
+            box-sizing: border-box !important;
         }
-        /* 仅底部操作按钮生效，避免影响设置区的小按钮与“×” */
-        .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+        #cnb-issue-dialog-buttons {
+            display: flex !important;
+            justify-content: flex-end !important;
+            gap: 10px !important;
+            margin-top: 15px !important;
         }
-        .cnb-issue-btn-confirm {
-            background: #0366d6;
-            color: white;
+        #cnb-settings-dialog {
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            background: white !important;
+            border: 1px solid #ddd !important;
+            border-radius: 8px !important;
+            padding: 20px !important;
+            z-index: 10001 !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important;
+            min-width: 500px !important;
+            max-width: 90vw !important;
+            max-height: 80vh !important;
+            overflow: auto !important;
         }
-        .cnb-issue-btn-cancel {
-            background: #6c757d;
-            color: white;
+        #cnb-issue-list-dialog {
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            background: white !important;
+            border: 1px solid #ddd !important;
+            border-radius: 8px !important;
+            padding: 20px !important;
+            z-index: 10001 !important;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15) !important;
+            min-width: 500px !important;
+            max-width: 90vw !important;
+            max-height: 80vh !important;
+            overflow: auto !important;
         }
-        .cnb-issue-btn-confirm:hover {
-            background: #0256b9;
+        #cnb-settings-dialog-buttons {
+            display: flex !important;
+            justify-content: flex-end !important;
+            gap: 10px !important;
+            margin-top: 15px !important;
         }
-        .cnb-issue-btn-cancel:hover {
-            background: #5a6268;
+        /* 设置对话框中的input和textarea样式 */
+        #cnb-settings-dialog input,
+        #cnb-issue-list-dialog input {
+            display: block !important;
+            width: 100% !important;
+            margin: 4px 0 !important;
+            padding: 8px !important;
+            border: 1px solid #ccc !important;
+            border-radius: 4px !important;
+            box-sizing: border-box !important;
+        }
+        /* 仅底部操作按钮生效，避免影响设置区的小按钮与"×" */
+        #cnb-issue-dialog-buttons > button {
+            padding: 8px 16px !important;
+            border: none !important;
+            border-radius: 4px !important;
+            cursor: pointer !important;
+            font-size: 14px !important;
+            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
+        }
+        #cnb-issue-btn-confirm {
+            background: #0366d6 !important;
+            color: white !important;
+        }
+        #cnb-issue-btn-cancel {
+            background: #6c757d !important;
+            color: white !important;
+        }
+        #cnb-issue-btn-confirm:hover {
+            background: #0256b9 !important;
+        }
+        #cnb-issue-btn-cancel:hover {
+            background: #5a6268 !important;
         }
         /* 新增：创建完成Issue 按钮样式（绿色） */
-        .cnb-issue-btn-done {
-            background: #28a745;
-            color: white;
+        #cnb-issue-btn-done {
+            background: #28a745 !important;
+            color: white !important;
         }
-        .cnb-issue-btn-done:hover {
-            background: #218838;
+        #cnb-issue-btn-done:hover {
+            background: #218838 !important;
         }
-        .cnb-issue-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.5);
-            z-index: 10000;
+        #cnb-issue-overlay {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            background: rgba(0,0,0,0.5) !important;
+            z-index: 10000 !important;
         }
-        .cnb-issue-loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #0366d6;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-            margin-right: 10px;
+        #cnb-issue-loading {
+            display: inline-block !important;
+            width: 20px !important;
+            height: 20px !important;
+            border: 3px solid #f3f3f3 !important;
+            border-top: 3px solid #0366d6 !important;
+            border-radius: 50% !important;
+            animation: cnb-spin 1s linear infinite !important;
+            margin-right: 10px !important;
         }
 
-        /* 区域选择模式样式 */
-        .cnb-selection-mode * {
+        /* 区域选择模式样式 - 使用 ID 选择器避免冲突 */
+        #cnb-selection-mode * {
             cursor: crosshair !important;
         }
         .cnb-selection-hover {
@@ -180,126 +311,134 @@
             outline: 3px solid #28a745 !important;
             background-color: rgba(40, 167, 69, 0.15) !important;
         }
-        .cnb-selection-tooltip {
-            position: fixed;
-            top: 10px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #333;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 4px;
-            z-index: 10002;
-            font-size: 14px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        #cnb-selection-tooltip {
+            position: fixed !important;
+            top: 10px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            background: #333 !important;
+            color: white !important;
+            padding: 10px 20px !important;
+            border-radius: 4px !important;
+            z-index: 10002 !important;
+            font-size: 14px !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3) !important;
         }
-        .cnb-selection-tooltip button {
-            margin-left: 10px;
-            padding: 4px 8px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 3px;
-            cursor: pointer;
+        #cnb-selection-tooltip button {
+            display: inline-block !important;
+            margin-left: 10px !important;
+            padding: 4px 8px !important;
+            background: #28a745 !important;
+            color: white !important;
+            border: none !important;
+            cursor: pointer !important;
+            border-radius: 3px !important;
+            font-size: 13px !important;
+        }
+        #cnb-selection-tooltip #cnb-cancel-selection {
+            background: #6c757d !important;
+        }
+            border-radius: 3px !important;
+            cursor: pointer !important;
         }
 
-        @keyframes spin {
+        @keyframes cnb-spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
     `);
 
-    /* 左侧贴边 Dock 控制栏（自动隐藏，悬停显示） */
+    /* 左侧贴边 Dock 控制栏（自动隐藏，悬停显示） - 使用 ID 选择器 */
     GM_addStyle(`
-        .cnb-dock {
-            position: fixed;
-            left: 0;
-            top: 40%;
-            transform: translateX(-88%);
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            padding: 8px 8px 8px 12px; /* 左侧保留把手可点区域 */
-            background: rgba(255,255,255,0.95);
-            border: 1px solid #d0d7de;
-            border-left: none;
-            border-radius: 0 8px 8px 0;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-            z-index: 10002;
-            transition: transform .2s ease, opacity .2s ease;
-            opacity: 0;
+        #cnb-dock {
+            position: fixed !important;
+            left: 0 !important;
+            top: 40% !important;
+            transform: translateX(-88%) !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 8px !important;
+            padding: 8px 8px 8px 12px !important; /* 左侧保留把手可点区域 */
+            background: rgba(255,255,255,0.95) !important;
+            border: 1px solid #d0d7de !important;
+            border-left: none !important;
+            border-radius: 0 8px 8px 0 !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
+            z-index: 10002 !important;
+            transition: transform .2s ease, opacity .2s ease !important;
+            opacity: 0 !important;
         }
-        .cnb-dock:hover,
-        .cnb-dock.cnb-dock--visible {
-            transform: translateX(0);
-            opacity: 1;
+        #cnb-dock:hover,
+        #cnb-dock.cnb-dock--visible {
+            transform: translateX(0) !important;
+            opacity: 1 !important;
         }
-        .cnb-dock .cnb-dock-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 72px;
-            height: 32px;
-            padding: 0 10px;
-            font-size: 13px;
-            color: #24292f;
-            background: #f6f8fa;
-            border: 1px solid #d0d7de;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+        #cnb-dock .cnb-dock-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-width: 72px !important;
+            height: 32px !important;
+            padding: 0 10px !important;
+            font-size: 13px !important;
+            color: #24292f !important;
+            background: #f6f8fa !important;
+            border: 1px solid #d0d7de !important;
+            border-radius: 6px !important;
+            cursor: pointer !important;
+            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
         }
-        .cnb-dock .cnb-dock-btn:hover {
-            background: #eef2f6;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+        #cnb-dock .cnb-dock-btn:hover {
+            background: #eef2f6 !important;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.12) !important;
         }
-        .cnb-dock .cnb-dock-btn:active {
-            transform: translateY(1px);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+        #cnb-dock .cnb-dock-btn:active {
+            transform: translateY(1px) !important;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.18) !important;
         }
         /* 左侧把手提示条 */
-        .cnb-dock::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 12px;
-            width: 10px;
-            height: calc(100% - 24px);
-            background: linear-gradient(180deg, #e9ecef, #dde2e7);
-            border-right: 1px solid #d0d7de;
-            border-radius: 0 6px 6px 0;
+        #cnb-dock::before {
+            content: '' !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 12px !important;
+            width: 10px !important;
+            height: calc(100% - 24px) !important;
+            background: linear-gradient(180deg, #e9ecef, #dde2e7) !important;
+            border-right: 1px solid #d0d7de !important;
+            border-radius: 0 6px 6px 0 !important;
         }
     `);
 
-    // 追加设置按钮样式
+    // 追加设置按钮样式 - 使用 ID 选择器
     GM_addStyle(`
-        .cnb-issue-settings-btn {
-            position: fixed;
-            z-index: 10000;
-            background: #6c757d;
-            color: white;
-            border: none;
-            border-radius: 50%;
-            width: 44px;
-            height: 44px;
-            cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
+        #cnb-issue-settings-btn {
+            position: fixed !important;
+            z-index: 10000 !important;
+            background: #6c757d !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 50% !important;
+            width: 44px !important;
+            height: 44px !important;
+            cursor: pointer !important;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.25) !important;
+            font-size: 18px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            transition: all 0.2s ease !important;
         }
-        .cnb-issue-settings-btn:hover {
-            background: #5a6268;
-            transform: scale(1.05);
+        #cnb-issue-settings-btn:hover {
+            background: #5a6268 !important;
+            transform: scale(1.05) !important;
         }
     `);
 
-    /* 强制隔离并统一控件样式，避免继承站点样式 */
+    /* 强制隔离并统一控件样式，避免继承站点样式 - 使用 ID 选择器 */
     GM_addStyle(`
-        .cnb-issue-dialog input.cnb-control,
-        .cnb-issue-dialog textarea.cnb-control {
+        #cnb-issue-dialog input.cnb-control,
+        #cnb-issue-dialog textarea.cnb-control {
             box-sizing: border-box !important;
             width: 100% !important;
             margin: 4px 0 !important;
@@ -314,16 +453,16 @@
             -webkit-appearance: none !important;
             -moz-appearance: none !important;
         }
-        .cnb-issue-dialog textarea.cnb-control {
+        #cnb-issue-dialog textarea.cnb-control {
             min-height: 300px !important;
             resize: vertical !important;
             font-family: 'Monaco','Menlo','Ubuntu Mono',monospace !important;
             font-size: 12px !important;
             line-height: 1.4 !important;
         }
-        /* 仅底部操作按钮生效，避免影响设置区的小按钮与“×”
+        /* 仅底部操作按钮生效，避免影响设置区的小按钮与"×"
            不设置背景和颜色，让各自类（confirm/cancel）决定配色与 hover */
-        .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
+        #cnb-issue-dialog-buttons > button {
             padding: 8px 16px !important;
             border: none !important;
             border-radius: 4px !important;
@@ -331,14 +470,14 @@
             font-size: 14px !important;
             transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
         }
-        .cnb-issue-btn-confirm { background: #0366d6 !important; color: #fff !important; }
-        .cnb-issue-btn-confirm:hover { background: #0256b9 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
-        .cnb-issue-btn-cancel { background: #6c757d !important; color: #fff !important; }
-        .cnb-issue-btn-cancel:hover { background: #5a6268 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
+        #cnb-issue-btn-confirm { background: #0366d6 !important; color: #fff !important; }
+        #cnb-issue-btn-confirm:hover { background: #0256b9 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
+        #cnb-issue-btn-cancel { background: #6c757d !important; color: #fff !important; }
+        #cnb-issue-btn-cancel:hover { background: #5a6268 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
         /* 新增：创建完成Issue 按钮（绿色） */
-        .cnb-issue-btn-done { background: #28a745 !important; color: #fff !important; }
-        .cnb-issue-btn-done:hover { background: #218838 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
-        .cnb-issue-btn-confirm:active, .cnb-issue-btn-cancel:active, .cnb-issue-btn-done:active { transform: translateY(1px) scale(0.98) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important; }
+        #cnb-issue-btn-done { background: #28a745 !important; color: #fff !important; }
+        #cnb-issue-btn-done:hover { background: #218838 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
+        #cnb-issue-btn-confirm:active, #cnb-issue-btn-cancel:active, #cnb-issue-btn-done:active { transform: translateY(1px) scale(0.98) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important; }
 
         /* 标签选择按钮 */
         #cnb-issue-tags { margin-top: 6px !important; }
@@ -359,7 +498,7 @@
         }
 
         /* 设置页：标签胶囊与删除按钮 */
-        .cnb-tags-list { margin-top: 8px !important; }
+        #cnb-settings-tags-list { margin-top: 8px !important; }
         .cnb-tag-pill {
             display: inline-flex !important;
             align-items: center !important;
@@ -379,7 +518,7 @@
             user-select: none !important;
         }
         .cnb-tag-delbtn {
-            /* 与通用按钮样式彻底隔离，保持小矩形，仅比“×”略大 */
+            /* 与通用按钮样式彻底隔离，保持小矩形，仅比"×"略大 */
             margin-left: 4px !important;
             border: none !important;
             background: transparent !important;
@@ -420,7 +559,7 @@
             align-items: center !important;
             flex-wrap: nowrap !important;          /* 一行展示，禁止换行 */
         }
-        .cnb-tag-addbtn {
+        #cnb-setting-addtag {
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
@@ -438,9 +577,9 @@
             font-size: 14px !important;
 
             flex: 0 0 auto !important;        /* 按钮不被压缩，不换行 */
-            min-width: max-content !important; /* 宽度随文字自适应，避免“添加标/签” */
+            min-width: max-content !important; /* 宽度随文字自适应，避免"添加标/签" */
         }
-        .cnb-tag-addbtn:hover { background: #218838 !important; }
+        #cnb-setting-addtag:hover { background: #218838 !important; }
 
         /* 让输入框可伸缩并等高 */
         .cnb-flex .cnb-control#cnb-setting-newtag {
@@ -453,6 +592,9 @@
             color: #666 !important;
             font-size: 12px !important;
         }
+
+        /* 设置页：标签胶囊与删除按钮 */
+        .cnb-tags-list { margin-top: 8px !important; }
 
         /* 开关样式（无文字，仅图形） */
         .cnb-switch {
@@ -739,10 +881,10 @@
         }
     }
 
-    // 创建左侧 Dock（去除拖动，仅点击）
+    // 创建左侧 Dock（去除拖动，仅点击） - 使用 ID 选择器
     function createFloatingButton() {
         const dock = document.createElement('div');
-        dock.className = 'cnb-dock';
+        dock.id = 'cnb-dock';
         dock.title = '悬停展开，移开隐藏';
 
         const btnSelect = document.createElement('button');
@@ -772,7 +914,7 @@
         });
         dock.appendChild(btnList);
 
-        // 剪贴板（根据设置的“剪贴板位置”是否为空来决定是否显示）
+        // 剪贴板（根据设置的"剪贴板位置"是否为空来决定是否显示）
         let __cnbClipCfg = '';
         try { if (typeof GM_getValue === 'function') { const v = GM_getValue('cnbClipboardIssue', ''); __cnbClipCfg = String(v || '').trim(); } } catch (_) {}
         if (__cnbClipCfg) {
@@ -791,46 +933,40 @@
 
         document.body.appendChild(dock);
 
-
-
         return dock;
     }
 
-    // 开始区域选择模式
+    // 开始区域选择模式 - 使用 ID 选择器
     function startAreaSelection() {
         if (isSelecting) return;
 
         isSelecting = true;
-        document.body.classList.add('cnb-selection-mode');
+        document.body.id = 'cnb-selection-mode';
 
         // 创建提示工具条
         const tooltip = document.createElement('div');
-        tooltip.className = 'cnb-selection-tooltip';
+        tooltip.id = 'cnb-selection-tooltip';
         tooltip.innerHTML = `
             请点击选择页面区域 (将转换为Markdown格式)
             <button id="cnb-confirm-selection">确认选择</button>
             <button id="cnb-cancel-selection">取消</button>
         `;
-        tooltip.id = 'cnb-selection-tooltip';
         document.body.appendChild(tooltip);
 
-        // 添加事件监听
-        const confirmBtn = tooltip.querySelector('#cnb-confirm-selection');
-        const cancelBtn = tooltip.querySelector('#cnb-cancel-selection');
-
-        confirmBtn.addEventListener('click', () => {
-            if (selectedElements && selectedElements.size > 0) {
-                showIssueDialog(Array.from(selectedElements));
-            } else {
-                GM_notification({
-                    text: '请先选择区域（支持 Ctrl+点击多选）',
-                    title: 'CNB Issue工具',
-                    timeout: 3000
-                });
+        // 添加事件监听 - 使用事件委托
+        tooltip.addEventListener('click', (e) => {
+            console.log('Tooltip clicked, target:', e.target.id);
+            if (e.target.id === 'cnb-confirm-selection') {
+                console.log('Confirm button clicked, selectedElements size:', selectedElements.size);
+                if (selectedElements && selectedElements.size > 0) {
+                    showIssueDialog(Array.from(selectedElements));
+                } else {
+                    showNotification('请先选择区域（支持 Ctrl+点击多选）');
+                }
+            } else if (e.target.id === 'cnb-cancel-selection') {
+                stopAreaSelection();
             }
         });
-
-        cancelBtn.addEventListener('click', stopAreaSelection);
 
         // 添加鼠标移动和点击事件
         document.addEventListener('mouseover', handleMouseOver);
@@ -844,7 +980,7 @@
     // 停止区域选择模式
     function stopAreaSelection() {
         isSelecting = false;
-        document.body.classList.remove('cnb-selection-mode');
+        document.body.removeAttribute('id');
 
         // 移除提示工具条
         const tooltip = document.getElementById('cnb-selection-tooltip');
@@ -907,6 +1043,7 @@
         e.stopPropagation();
 
         const element = e.target;
+        console.log('Element clicked:', element.tagName, element);
 
         // Ctrl 多选：切换该元素选中状态；否则保持单选
         if (e.ctrlKey === true) {
@@ -926,8 +1063,8 @@
             selectedElement.classList.remove('cnb-selection-hover');
             selectedElement.classList.add('cnb-selection-selected');
             selectedElements.add(selectedElement);
-            lastSelectedElement = selectedElement;
         }
+        console.log('Selected elements size after click:', selectedElements.size);
 
         // 更新提示信息
         const tooltip = document.getElementById('cnb-selection-tooltip');
@@ -939,24 +1076,7 @@
                 <button id="cnb-confirm-selection">确认选择</button>
                 <button id="cnb-cancel-selection">取消</button>
             `;
-
-            // 重新绑定事件
-            const confirmBtn = tooltip.querySelector('#cnb-confirm-selection');
-            const cancelBtn = tooltip.querySelector('#cnb-cancel-selection');
-
-            confirmBtn.addEventListener('click', () => {
-                if (selectedElements && selectedElements.size > 0) {
-                    showIssueDialog(Array.from(selectedElements));
-                } else if (typeof GM_notification === 'function') {
-                    GM_notification({
-                        text: '请先选择区域（支持 Ctrl+点击多选）',
-                        title: 'CNB Issue工具',
-                        timeout: 3000
-                    });
-                }
-            });
-
-            cancelBtn.addEventListener('click', stopAreaSelection);
+            // 事件监听器通过事件委托在tooltip上,无需重新绑定
         }
     }
 
@@ -972,21 +1092,23 @@
         }
     }
 
-    // 显示创建Issue的对话框
+    // 显示创建Issue的对话框 - 使用 ID 选择器
     function showIssueDialog(selected) {
+        console.log('showIssueDialog called with selected:', selected);
         stopAreaSelection(); // 先退出选择模式
 
         // 创建遮罩层
         const overlay = document.createElement('div');
-        overlay.className = 'cnb-issue-overlay';
+        overlay.id = 'cnb-issue-overlay';
 
         // 创建对话框
         const dialog = document.createElement('div');
-        dialog.className = 'cnb-issue-dialog';
+        dialog.id = 'cnb-issue-dialog';
+        console.log('Dialog element created, id:', dialog.id);
 
         // 强化筛选容器为 flex 并固定 5px 间距（避免被站点样式覆盖）
         GM_addStyle(`
-            .cnb-issue-dialog .cnb-issue-filter {
+            #cnb-issue-filter {
                 display: flex !important;
                 flex-wrap: wrap !important;
                 gap: 5px !important;
@@ -995,8 +1117,8 @@
 
         // 强化筛选标签按钮样式（避免被站点样式覆盖，统一为胶囊风格）
         GM_addStyle(`
-            .cnb-issue-dialog .cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn {
+            #cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }
+            #cnb-issue-filter .cnb-issue-filter-btn {
                 display: inline-flex !important;
                 align-items: center !important;
                 gap: 6px !important;
@@ -1014,18 +1136,18 @@
                 cursor: pointer !important;
                 user-select: none !important;
             }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn:hover {
+            #cnb-issue-filter .cnb-issue-filter-btn:hover {
                 background: #f6f8fa !important;
                 border-color: #afb8c1 !important;
                 box-shadow: 0 1px 0 rgba(27,31,36,0.06) !important;
             }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.active {
+            #cnb-issue-filter .cnb-issue-filter-btn.active {
                 background: #0366d6 !important;
                 border-color: #0256b9 !important;
                 color: #fff !important;
                 box-shadow: 0 1px 0 rgba(27,31,36,0.05) !important;
             }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.pressed {
+            #cnb-issue-filter .cnb-issue-filter-btn.pressed {
                 transform: translateY(1px) scale(0.98) !important;
                 box-shadow: 0 1px 0 rgba(27,31,36,0.08) !important;
             }
@@ -1046,7 +1168,7 @@
         const pageUrl = window.location.href;
 
         dialog.innerHTML = `
-            <h3>创建 CNB Issue (Markdown格式)</h3>
+            <div class="cnb-dialog-title">创建 CNB Issue (Markdown格式)</div>
             <div>
                 <label>标题:</label>
                 <input class="cnb-control" type="text" id="cnb-issue-title" value="${escapeHtml(pageTitle)}" placeholder="输入Issue标题">
@@ -1063,10 +1185,10 @@ ${escapeHtml(selectedContent)}</textarea>
                 <label>标签:</label>
                 <div id="cnb-issue-tags"></div>
             </div>
-            <div class="cnb-issue-dialog-buttons">
-                <button class="cnb-issue-btn-cancel">取消</button>
-                <button class="cnb-issue-btn-done">创建完成Issue</button>
-                <button class="cnb-issue-btn-confirm">创建Issue</button>
+            <div id="cnb-issue-dialog-buttons">
+                <button id="cnb-issue-btn-cancel">取消</button>
+                <button id="cnb-issue-btn-done">创建完成Issue</button>
+                <button id="cnb-issue-btn-confirm">创建Issue</button>
             </div>
         `;
 
@@ -1102,9 +1224,9 @@ ${escapeHtml(selectedContent)}</textarea>
                 });
             }
         }
-        const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
-        const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
-        const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
+        const cancelBtn = dialog.querySelector('#cnb-issue-btn-cancel');
+        const confirmBtn = dialog.querySelector('#cnb-issue-btn-confirm');
+        const doneBtn = dialog.querySelector('#cnb-issue-btn-done');
 
         const closeDialog = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -1154,13 +1276,7 @@ ${escapeHtml(selectedContent)}</textarea>
                                 doneBtn.innerHTML = '创建完成Issue';
                                 return;
                             }
-                            if (typeof GM_notification === 'function') {
-                                GM_notification({
-                                    text: 'Issue已标记为已完成（closed: completed）',
-                                    title: 'CNB Issue工具',
-                                    timeout: 3000
-                                });
-                            }
+                            showNotification('Issue已标记为已完成（closed: completed）');
                             if (document.body.contains(overlay)) document.body.removeChild(overlay);
                             if (document.body.contains(dialog)) document.body.removeChild(dialog);
                         });
@@ -1266,7 +1382,7 @@ ${escapeHtml(selectedContent)}</textarea>
         });
         let html = blocks.join('\n');
         // 还原占位
-        html = html.replace(/\u0000(INLINE|BLOCK)(\d+)\u0000/g, (_, type, i) => placeholders[Number(i)] || '');
+        html = html.replace(/\u0000(INLINE|BLOCK)(\d+)\u0000/g, (_, _type, i) => placeholders[Number(i)] || '');
         return html;
     }
 
@@ -1277,18 +1393,20 @@ ${escapeHtml(selectedContent)}</textarea>
         return div.innerHTML;
     }
 
-    // 设置弹窗
+    // 设置弹窗 - 使用 ID 选择器
     function openSettingsDialog() {
         // 单例：若已存在，先移除旧实例
         try {
-            if (__CNB_SETTINGS_OVERLAY && __CNB_SETTINGS_OVERLAY.parentNode) __CNB_SETTINGS_OVERLAY.remove();
-            if (__CNB_SETTINGS_DIALOG && __CNB_SETTINGS_DIALOG.parentNode) __CNB_SETTINGS_DIALOG.remove();
+            const existingOverlay = document.getElementById('cnb-settings-overlay');
+            const existingDialog = document.getElementById('cnb-settings-dialog');
+            if (existingOverlay) existingOverlay.remove();
+            if (existingDialog) existingDialog.remove();
         } catch (_) {}
         const overlay = document.createElement('div');
-        overlay.className = 'cnb-issue-overlay';
+        overlay.id = 'cnb-settings-overlay';
 
         const dialog = document.createElement('div');
-        dialog.className = 'cnb-issue-dialog';
+        dialog.id = 'cnb-settings-dialog';
         __CNB_SETTINGS_OVERLAY = overlay;
         __CNB_SETTINGS_DIALOG = dialog;
 
@@ -1305,7 +1423,7 @@ ${escapeHtml(selectedContent)}</textarea>
         } catch (_) {}
 
         dialog.innerHTML = `
-            <h3>CNB 设置</h3>
+            <div class="cnb-dialog-title">CNB 设置</div>
             <div>
                 <label>仓库路径 (owner/repo):</label>
                 <input class="cnb-control" type="text" id="cnb-setting-repo" placeholder="例如: IIIStudio/Demo" value="${escapeHtml(currentRepo)}">
@@ -1338,9 +1456,9 @@ ${escapeHtml(selectedContent)}</textarea>
                 </div>
                 <div id="cnb-setting-tags-list" class="cnb-tags-list"></div>
             </div>
-            <div class="cnb-issue-dialog-buttons">
-                <button class="cnb-issue-btn-cancel">取消</button>
-                <button class="cnb-issue-btn-confirm">保存</button>
+            <div id="cnb-settings-dialog-buttons">
+                <button id="cnb-settings-btn-cancel">取消</button>
+                <button id="cnb-settings-btn-confirm">保存</button>
             </div>
         `;
 
@@ -1414,9 +1532,7 @@ ${escapeHtml(selectedContent)}</textarea>
                 if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
                 renderTagsList();
                 newTagInput.value = '';
-                if (typeof GM_notification === 'function') {
-                    GM_notification({ text: '标签已添加', title: 'CNB Issue工具', timeout: 1500 });
-                }
+                    showNotification('标签已添加', 'CNB Issue工具', 1500);
             }
         });
 
@@ -1427,9 +1543,9 @@ ${escapeHtml(selectedContent)}</textarea>
             __CNB_SETTINGS_DIALOG = null;
         };
 
-        dialog.querySelector('.cnb-issue-btn-cancel').addEventListener('click', close);
+        dialog.querySelector('#cnb-settings-btn-cancel').addEventListener('click', close);
         overlay.addEventListener('click', close);
-        dialog.querySelector('.cnb-issue-btn-confirm').addEventListener('click', () => {
+        dialog.querySelector('#cnb-settings-btn-confirm').addEventListener('click', () => {
             const repo = dialog.querySelector('#cnb-setting-repo').value.trim();
             const token = dialog.querySelector('#cnb-setting-token').value.trim();
             const hotkey = (dialog.querySelector('#cnb-setting-hotkey')?.value || '').trim();
@@ -1452,8 +1568,8 @@ ${escapeHtml(selectedContent)}</textarea>
             try {
                 const clipIssue = (dialog.querySelector('#cnb-setting-clip-issue')?.value || '').trim();
                 if (typeof GM_setValue === 'function') GM_setValue('cnbClipboardIssue', clipIssue);
-                // 即时生效：根据是否有值来动态增删“剪贴板”按钮
-                const dock = document.querySelector('.cnb-dock');
+                // 即时生效：根据是否有值来动态增删"剪贴板"按钮
+                const dock = document.querySelector('#cnb-dock');
                 if (dock) {
                     let btn = dock.querySelector('#cnb-btn-clipboard');
                     if (clipIssue) {
@@ -1475,13 +1591,7 @@ ${escapeHtml(selectedContent)}</textarea>
                     }
                 }
             } catch (_) {}
-            if (typeof GM_notification === 'function') {
-                GM_notification({
-                    text: '设置已保存',
-                    title: 'CNB Issue工具',
-                    timeout: 2000
-                });
-            }
+            showNotification('设置已保存', 'CNB Issue工具', 2000);
             close();
         });
 
@@ -1489,34 +1599,34 @@ ${escapeHtml(selectedContent)}</textarea>
         document.body.appendChild(dialog);
     }
 
-    // Issue 列表弹窗
+    // Issue 列表弹窗 - 使用 ID 选择器
     function openIssueList() {
         // 单例：若已存在，先移除旧实例
         try {
-            if (__CNB_ISSUE_OVERLAY && __CNB_ISSUE_OVERLAY.parentNode) __CNB_ISSUE_OVERLAY.remove();
-            if (__CNB_ISSUE_DIALOG && __CNB_ISSUE_DIALOG.parentNode) __CNB_ISSUE_DIALOG.remove();
+            const existingOverlay = document.getElementById('cnb-issue-list-overlay');
+            const existingDialog = document.getElementById('cnb-issue-list-dialog');
+            if (existingOverlay) existingOverlay.remove();
+            if (existingDialog) existingDialog.remove();
         } catch (_) {}
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
-            if (typeof GM_notification === 'function') {
-                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
-            }
+            showNotification('请先在设置中配置仓库路径与访问令牌');
             if (typeof openSettingsDialog === 'function') openSettingsDialog();
             return;
         }
 
         const overlay = document.createElement('div');
-        overlay.className = 'cnb-issue-overlay';
+        overlay.id = 'cnb-issue-list-overlay';
         __CNB_ISSUE_OVERLAY = overlay;
 
         const dialog = document.createElement('div');
-        dialog.className = 'cnb-issue-dialog';
+        dialog.id = 'cnb-issue-list-dialog';
         __CNB_ISSUE_DIALOG = dialog;
 
         dialog.innerHTML = `
-            <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:12px; top:12px; border:none; background:transparent; color:#666; font-size:18px; line-height:1; cursor:pointer;">×</button>
-            <h3>Issue 列表</h3>
-            <div class="cnb-hint" style="margin-bottom:8px;">显示 state=closed 的最近 100 条</div>
-            <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:8px 0;"></div>
+            <button id="cnb-issue-list-close" title="关闭" style="position:absolute; right:12px; top:12px; border:none; background:transparent; color:#666; font-size:18px; line-height:1; cursor:pointer;">×</button>
+            <div class="cnb-dialog-title">Issue 列表</div>
+            <div id="cnb-issue-list-hint" style="margin-bottom:8px;">显示 state=closed 的最近 100 条</div>
+            <div id="cnb-issue-filter" style="margin:8px 0;"></div>
             <div id="cnb-issue-list" style="height:60vh; overflow:auto; border:1px solid #e5e7eb; border-radius:6px;"></div>
         `;
 
@@ -1536,7 +1646,7 @@ ${escapeHtml(selectedContent)}</textarea>
         `);
 
         const listEl = dialog.querySelector('#cnb-issue-list');
-        const closeBtn = dialog.querySelector('.cnb-dialog-close');
+        const closeBtn = dialog.querySelector('#cnb-issue-list-close');
 
         // 行内标签（Issue 列表中的 labels）胶囊样式
         GM_addStyle(`
@@ -1626,7 +1736,6 @@ ${escapeHtml(selectedContent)}</textarea>
                             const number = it.number ?? it.id ?? it.iid ?? '';
                             const title = it.title ?? '';
                             const createdAt = it.created_at ?? '';
-                            const labelNames = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
 
                             const row = document.createElement('div');
                             row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eef2f6;';
@@ -1693,13 +1802,9 @@ ${escapeHtml(selectedContent)}</textarea>
 
 ${md}`, 'text');
                                                 }
-                                                if (typeof GM_notification === 'function') {
-                                                    GM_notification({ text: '已关闭并复制到剪贴板', title: 'CNB Issue工具', timeout: 3000 });
-                                                }
+                                                showNotification('已关闭并复制到剪贴板');
                                             } else {
-                                                if (typeof GM_notification === 'function') {
-                                                    GM_notification({ text: '操作失败: HTTP ' + res.status, title: 'CNB Issue工具', timeout: 5000 });
-                                                }
+                                                showNotification('操作失败: HTTP ' + res.status, 'CNB Issue工具', 5000);
                                             }
                                         } finally {
                                             btnCopy.disabled = false;
@@ -1707,9 +1812,7 @@ ${md}`, 'text');
                                         }
                                     },
                                     onerror: function() {
-                                        if (typeof GM_notification === 'function') {
-                                            GM_notification({ text: '网络请求失败', title: 'CNB Issue工具', timeout: 5000 });
-                                        }
+                                        showNotification('网络请求失败', 'CNB Issue工具', 5000);
                                         btnCopy.disabled = false;
                                         btnCopy.textContent = oldText;
                                     }
@@ -2032,9 +2135,7 @@ ${md}`, 'text');
         } catch (_) {}
 
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
-            if (typeof GM_notification === 'function') {
-                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
-            }
+            showNotification('请先在设置中配置仓库路径与访问令牌');
             if (typeof openSettingsDialog === 'function') openSettingsDialog();
             return;
         }
@@ -2092,9 +2193,7 @@ ${md}`, 'text');
                 } else if (navigator.clipboard && navigator.clipboard.writeText) {
                     await navigator.clipboard.writeText(String(text || ''));
                 }
-                if (typeof GM_notification === 'function') {
-                    GM_notification({ text: '已复制到剪贴板', title: 'CNB 剪贴板', timeout: 2000 });
-                }
+                    showNotification('已复制到剪贴板', 'CNB 剪贴板', 2000);
             } catch (_) {}
         });
 
@@ -2195,7 +2294,7 @@ ${md}`, 'text');
                                     pre.style.position = 'relative';
                                     if (!pre.style.paddingRight) pre.style.paddingRight = '36px';
                                     if (!pre.querySelector('.cnb-codecopy-inline')) {
-                                        // 确保右上角控制容器（同一父容器，便于排列“展开”与“复制”）
+                                        // 确保右上角控制容器（同一父容器，便于排列"展开"与"复制"）
                                         let controls = pre.querySelector('.cnb-code-controls');
                                         if (!controls) {
                                             controls = document.createElement('div');
@@ -2221,9 +2320,7 @@ ${md}`, 'text');
                                                 } else if (navigator.clipboard && navigator.clipboard.writeText) {
                                                     await navigator.clipboard.writeText(String(text || ''));
                                                 }
-                                                if (typeof GM_notification === 'function') {
-                                                    GM_notification({ text: '代码已复制', title: 'CNB 剪贴板', timeout: 1500 });
-                                                }
+                                                showNotification('代码已复制', 'CNB 剪贴板', 1500);
                                                 // 点击反馈动画：对勾+变色+轻微放大，随后恢复
                                                 try {
                                                     const prevHTML = btn.innerHTML;
@@ -2251,7 +2348,7 @@ ${md}`, 'text');
                                 } catch (_) {}
                             });
                         }
-                        // 行为增强：为每个代码块提供“两行预览 + 展开/收起”，复制仍复制全文
+                        // 行为增强：为每个代码块提供"两行预览 + 展开/收起"，复制仍复制全文
                         try {
                           if (typeof GM_addStyle === 'function') {
                             addStyleOnce('clipwin-pre-controls', `
@@ -2473,9 +2570,7 @@ ${md}`, 'text');
     // 创建Issue
     function createIssue(title, content, labels = [], callback) {
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
-            if (typeof GM_notification === 'function') {
-                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
-            }
+            showNotification('请先在设置中配置仓库路径与访问令牌');
             if (typeof openSettingsDialog === 'function') openSettingsDialog();
             if (typeof callback === 'function') callback(false);
             return;
@@ -2516,11 +2611,7 @@ ${md}`, 'text');
                     const issueId = respObj?.id ?? respObj?.number ?? respObj?.iid ?? respObj?.issue_id;
 
                     const notifySuccess = () => {
-                        GM_notification({
-                            text: `Issue创建成功！`,
-                            title: 'CNB Issue工具',
-                            timeout: 3000
-                        });
+                        showNotification('Issue创建成功！');
                         if (callback) callback(true, issueId);
                     };
 
@@ -2540,27 +2631,19 @@ ${md}`, 'text');
                             onload: function(res2) {
                                 if (res2.status >= 200 && res2.status < 300) {
                                     notifySuccess();
-                                } else {
-                                    let msg = `HTTP ${res2.status}`;
-                                    try {
-                                        const err = typeof res2.response === 'string'
-                                          ? JSON.parse(res2.response) : res2.response;
-                                        if (err?.message) msg = err.message;
-                                    } catch (_) {}
-                                    GM_notification({
-                                        text: `Issue已创建，但设置标签失败：${msg}`,
-                                        title: 'CNB Issue工具',
-                                        timeout: 5000
-                                    });
-                                    if (callback) callback(true, issueId);
-                                }
+                            } else {
+                                let msg = `HTTP ${res2.status}`;
+                                try {
+                                    const err = typeof res2.response === 'string'
+                                      ? JSON.parse(res2.response) : res2.response;
+                                    if (err?.message) msg = err.message;
+                                } catch (_) {}
+                                showNotification(`Issue已创建，但设置标签失败：${msg}`, 'CNB Issue工具', 5000);
+                                if (callback) callback(true, issueId);
+                            }
                             },
                             onerror: function() {
-                                GM_notification({
-                                    text: `Issue已创建，但设置标签时网络错误`,
-                                    title: 'CNB Issue工具',
-                                    timeout: 5000
-                                });
+                                showNotification(`Issue已创建，但设置标签时网络错误`, 'CNB Issue工具', 5000);
                                 if (callback) callback(true, issueId);
                             }
                         });
@@ -2578,20 +2661,12 @@ ${md}`, 'text');
                         }
                     } catch (e) {}
 
-                    GM_notification({
-                        text: `创建失败: ${errorMsg}`,
-                        title: 'CNB Issue工具',
-                        timeout: 5000
-                    });
+                    showNotification(`创建失败: ${errorMsg}`, 'CNB Issue工具', 5000);
                     if (callback) callback(false);
                 }
             },
-            onerror: function(error) {
-                GM_notification({
-                    text: `网络请求失败`,
-                    title: 'CNB Issue工具',
-                    timeout: 5000
-                });
+            onerror: function() {
+                showNotification('网络请求失败', 'CNB Issue工具', 5000);
                 if (callback) callback(false);
             }
         });
@@ -2626,24 +2701,12 @@ ${md}`, 'text');
                         const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
                         if (err?.message) msg = err.message;
                     } catch (_) {}
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: `标记完成失败：${msg}`,
-                            title: 'CNB Issue工具',
-                            timeout: 5000
-                        });
-                    }
+                    showNotification(`标记完成失败：${msg}`, 'CNB Issue工具', 5000);
                     if (typeof callback === 'function') callback(false);
                 }
             },
             onerror: function() {
-                if (typeof GM_notification === 'function') {
-                    GM_notification({
-                        text: `网络请求失败（关闭Issue）`,
-                        title: 'CNB Issue工具',
-                        timeout: 5000
-                    });
-                }
+                showNotification(`网络请求失败（关闭Issue）`, 'CNB Issue工具', 5000);
                 if (typeof callback === 'function') callback(false);
             }
         });
@@ -2760,6 +2823,9 @@ ${md}`, 'text');
                 HOTKEY_ENABLED = !!hkEnabled;
             }
         } catch (_) {}
+
+        // 注入通用样式
+        injectCommonStyles();
 
         createFloatingButton();
 
