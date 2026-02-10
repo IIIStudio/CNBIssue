@@ -505,8 +505,13 @@
 
     // HTML转Markdown的转换器
     const htmlToMarkdown = {
+        // 图片收集列表
+        images: [],
+
         // 转换入口函数
         convert: function(html) {
+            // 重置图片列表
+            this.images = [];
             // 创建临时容器
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
@@ -600,6 +605,14 @@
                 case 'img':
                     const src = node.getAttribute('src') || '';
                     const alt = node.getAttribute('alt') || '';
+                    // 收集图片信息用于上传
+                    if (src && !src.startsWith('data:')) {
+                        this.images.push({
+                            src: src,
+                            alt: alt,
+                            element: node
+                        });
+                    }
                     return `![${alt}](${src})`;
                 case 'ul':
                     return `${childrenContent}\n`;
@@ -1040,10 +1053,29 @@
 
 
 `);
-        const selectedContent = (parts.length > 1 ? `
+        let selectedContent = (parts.length > 1 ? `
 ` : '') + joined;
         const pageTitle = document.title;
         const pageUrl = window.location.href;
+
+        // 收集所有需要上传的图片
+        const allImages = [];
+        elements.forEach(el => {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = el.innerHTML;
+            htmlToMarkdown.convert(tempDiv.innerHTML);
+            allImages.push(...htmlToMarkdown.images);
+        });
+
+        // 去重图片
+        const uniqueImages = [];
+        const seenSrcs = new Set();
+        allImages.forEach(img => {
+            if (!seenSrcs.has(img.src)) {
+                seenSrcs.add(img.src);
+                uniqueImages.push(img);
+            }
+        });
 
         dialog.innerHTML = `
             <h3>创建 CNB Issue (Markdown格式)</h3>
@@ -1058,6 +1090,7 @@
 **选择时间:** ${new Date().toLocaleString()}
 
 ${escapeHtml(selectedContent)}</textarea>
+                ${uniqueImages.length > 0 ? `<div class="cnb-hint" id="cnb-image-upload-status">检测到 ${uniqueImages.length} 张图片，点击创建时将自动上传</div>` : ''}
             </div>
             <div>
                 <label>标签:</label>
@@ -1124,15 +1157,44 @@ ${escapeHtml(selectedContent)}</textarea>
             confirmBtn.disabled = true;
             confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建中...';
 
-            createIssue(title, content, labels, (success) => {
-                if (success) {
-                    closeDialog();
-                } else {
-                    // 重新启用按钮
-                    confirmBtn.disabled = false;
-                    confirmBtn.innerHTML = '创建Issue';
-                }
-            });
+            // 如果有图片，先上传图片再创建 Issue
+            if (uniqueImages.length > 0) {
+                const statusEl = dialog.querySelector('#cnb-image-upload-status');
+                if (statusEl) statusEl.textContent = '正在上传图片...';
+
+                uploadImagesAndReplace(content, uniqueImages, (updatedContent, errors) => {
+                    if (errors && errors.length > 0) {
+                        const failedCount = errors.filter(e => e.error).length;
+                        const successCount = errors.length - failedCount;
+                        if (statusEl) {
+                            statusEl.textContent = `图片上传完成：成功 ${successCount} 张，失败 ${failedCount} 张`;
+                        }
+                        if (failedCount > 0) {
+                            console.warn('部分图片上传失败:', errors.filter(e => e.error));
+                        }
+                    } else if (statusEl) {
+                        statusEl.textContent = '图片上传完成';
+                    }
+
+                    createIssue(title, updatedContent, labels, (success) => {
+                        if (success) {
+                            closeDialog();
+                        } else {
+                            confirmBtn.disabled = false;
+                            confirmBtn.innerHTML = '创建Issue';
+                        }
+                    });
+                });
+            } else {
+                createIssue(title, content, labels, (success) => {
+                    if (success) {
+                        closeDialog();
+                    } else {
+                        confirmBtn.disabled = false;
+                        confirmBtn.innerHTML = '创建Issue';
+                    }
+                });
+            }
         });
 
         if (doneBtn) {
@@ -1145,31 +1207,58 @@ ${escapeHtml(selectedContent)}</textarea>
                 confirmBtn.disabled = true;
                 doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建并完成中...';
 
-                createIssue(title, content, labels, (success, issueId) => {
-                    if (success && issueId != null) {
-                        closeIssue(issueId, 'completed', (ok) => {
-                            if (!ok) {
-                                doneBtn.disabled = false;
-                                confirmBtn.disabled = false;
-                                doneBtn.innerHTML = '创建完成Issue';
-                                return;
+                const afterIssueCreated = (updatedContent) => {
+                    createIssue(title, updatedContent, labels, (success, issueId) => {
+                        if (success && issueId != null) {
+                            closeIssue(issueId, 'completed', (ok) => {
+                                if (!ok) {
+                                    doneBtn.disabled = false;
+                                    confirmBtn.disabled = false;
+                                    doneBtn.innerHTML = '创建完成Issue';
+                                    return;
+                                }
+                                if (typeof GM_notification === 'function') {
+                                    GM_notification({
+                                        text: 'Issue已标记为已完成（closed: completed）',
+                                        title: 'CNB Issue工具',
+                                        timeout: 3000
+                                    });
+                                }
+                                if (document.body.contains(overlay)) document.body.removeChild(overlay);
+                                if (document.body.contains(dialog)) document.body.removeChild(dialog);
+                            });
+                        } else {
+                            doneBtn.disabled = false;
+                            confirmBtn.disabled = false;
+                            doneBtn.innerHTML = '创建完成Issue';
+                        }
+                    });
+                };
+
+                // 如果有图片，先上传图片再创建 Issue
+                if (uniqueImages.length > 0) {
+                    const statusEl = dialog.querySelector('#cnb-image-upload-status');
+                    if (statusEl) statusEl.textContent = '正在上传图片...';
+
+                    uploadImagesAndReplace(content, uniqueImages, (updatedContent, errors) => {
+                        if (errors && errors.length > 0) {
+                            const failedCount = errors.filter(e => e.error).length;
+                            const successCount = errors.length - failedCount;
+                            if (statusEl) {
+                                statusEl.textContent = `图片上传完成：成功 ${successCount} 张，失败 ${failedCount} 张`;
                             }
-                            if (typeof GM_notification === 'function') {
-                                GM_notification({
-                                    text: 'Issue已标记为已完成（closed: completed）',
-                                    title: 'CNB Issue工具',
-                                    timeout: 3000
-                                });
+                            if (failedCount > 0) {
+                                console.warn('部分图片上传失败:', errors.filter(e => e.error));
                             }
-                            if (document.body.contains(overlay)) document.body.removeChild(overlay);
-                            if (document.body.contains(dialog)) document.body.removeChild(dialog);
-                        });
-                    } else {
-                        doneBtn.disabled = false;
-                        confirmBtn.disabled = false;
-                        doneBtn.innerHTML = '创建完成Issue';
-                    }
-                });
+                        } else if (statusEl) {
+                            statusEl.textContent = '图片上传完成';
+                        }
+
+                        afterIssueCreated(updatedContent);
+                    });
+                } else {
+                    afterIssueCreated(content);
+                }
             });
         }
 
@@ -1313,6 +1402,7 @@ ${escapeHtml(selectedContent)}</textarea>
             <div>
                 <label>访问令牌 (accessToken):</label>
                 <input class="cnb-control" type="password" id="cnb-setting-token" placeholder="输入访问令牌" value="${escapeHtml(currentToken)}">
+                <div class="cnb-hint">注意：上传图片需要访问令牌具有 <strong>repo-contents:rw</strong> 权限</div>
             </div>
             <div>
                 <label>剪贴板位置（Issue编号）:</label>
@@ -2649,21 +2739,267 @@ ${md}`, 'text');
         });
     }
 
+    // 1. 获取上传凭证
+    function requestUploadToken(fileName, fileSize, callback) {
+        if (!CONFIG.repoPath || !CONFIG.accessToken) {
+            if (typeof callback === 'function') callback(null, '请先配置仓库路径和访问令牌');
+            return;
+        }
+
+        const uploadUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}/-/upload/imgs`;
+
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: uploadUrl,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': CONFIG.accessToken,
+                'Accept': 'application/json'
+            },
+            data: JSON.stringify({ name: fileName, size: fileSize, ext: {} }),
+            responseType: 'json',
+            onload: function(response) {
+                if (response.status >= 200 && response.status < 300) {
+                    const resp = response.response || JSON.parse(response.responseText || '{}');
+                    if (callback) callback(resp, null);
+                    return;
+                }
+
+                let errorMsg = `HTTP ${response.status}`;
+                const err = typeof response.response === 'string'
+                    ? JSON.parse(response.response || '{}') : response.response;
+
+                if (err?.message) errorMsg = err.message;
+
+                // 特殊处理权限错误 (errcode: 7)
+                if (err?.errcode === 7 && err?.errmsg?.includes('票据授权范围')) {
+                    errorMsg = '访问令牌缺少 repo-contents:rw 权限';
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '图片上传失败：访问令牌缺少 repo-contents:rw 权限',
+                            title: 'CNB Issue工具',
+                            timeout: 5000
+                        });
+                    }
+                }
+
+                if (callback) callback(null, errorMsg);
+            },
+            onerror: function() {
+                if (callback) callback(null, '网络请求失败');
+            }
+        });
+    }
+
+    // 2. 上传图片到 OSS
+    function uploadImageToOss(uploadInfo, fileData, callback) {
+        if (!uploadInfo?.upload_url) {
+            if (callback) callback(null, '上传凭证无效');
+            return;
+        }
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('PUT', uploadInfo.upload_url);
+        xhr.setRequestHeader('Content-Type', fileData.type || 'application/octet-stream');
+
+        // 添加额外的表单参数作为请求头
+        if (uploadInfo.form) {
+            Object.entries(uploadInfo.form).forEach(([key, value]) => {
+                if (key.toLowerCase() !== 'file') {
+                    xhr.setRequestHeader(key, value);
+                }
+            });
+        }
+
+        xhr.onload = function() {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                const relativePath = uploadInfo.assets?.path || '';
+                const fullUrl = relativePath.includes(CONFIG.repoPath)
+                    ? `https://cnb.cool${relativePath}`
+                    : `https://cnb.cool/${CONFIG.repoPath}${relativePath}`;
+                if (callback) callback(fullUrl, null);
+                return;
+            }
+
+            let errorMsg = `HTTP ${xhr.status}`;
+            try {
+                if (xhr.responseText) {
+                    const err = JSON.parse(xhr.responseText);
+                    if (err?.message) errorMsg = err.message;
+                }
+            } catch (_) {}
+
+            if (callback) callback(null, errorMsg);
+        };
+
+        xhr.onerror = function() {
+            if (callback) callback(null, '图片上传失败');
+        };
+
+        xhr.send(fileData);
+    }
+
+    // 3. 获取图片数据（从 URL 或 base64）
+    function fetchImageData(imageUrl, callback) {
+        // 如果是 base64 数据
+        if (imageUrl.startsWith('data:')) {
+            const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (matches) {
+                const mimeType = matches[1];
+                const base64Data = matches[2];
+                try {
+                    const byteString = atob(base64Data);
+                    const ab = new ArrayBuffer(byteString.length);
+                    const ia = new Uint8Array(ab);
+                    for (let i = 0; i < byteString.length; i++) {
+                        ia[i] = byteString.charCodeAt(i);
+                    }
+                    const blob = new Blob([ab], { type: mimeType });
+                    if (callback) callback(blob, null);
+                    return;
+                } catch (e) {
+                    if (callback) callback(null, 'base64 解析失败');
+                    return;
+                }
+            }
+        }
+
+        // 通过 URL 获取图片 - 使用 fetch
+        fetch(imageUrl, {
+            method: 'GET',
+            mode: 'cors',
+            credentials: 'omit'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            if (callback) callback(blob, null);
+        })
+        .catch(error => {
+            // 如果 fetch 失败，尝试使用 GM_xmlhttpRequest
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: imageUrl,
+                responseType: 'arraybuffer',
+                onload: function(response) {
+                    if (response.status >= 200 && response.status < 300) {
+                        const arrayBuffer = response.response;
+                        if (arrayBuffer) {
+                            const blob = new Blob([arrayBuffer]);
+                            if (callback) callback(blob, null);
+                        } else {
+                            if (callback) callback(null, '获取图片数据失败');
+                        }
+                    } else {
+                        if (callback) callback(null, `HTTP ${response.status}`);
+                    }
+                },
+                onerror: function() {
+                    if (callback) callback(null, '获取图片失败');
+                }
+            });
+        });
+    }
+
+    // 4. 批量上传图片并替换 Markdown 中的 URL
+    function uploadImagesAndReplace(markdown, images, callback) {
+        if (!images || images.length === 0) {
+            if (callback) callback(markdown, []);
+            return;
+        }
+
+        const uploadPromises = [];
+        const errors = [];
+
+        // 处理每个图片
+        images.forEach((imgInfo, index) => {
+            const promise = new Promise((resolve) => {
+                // 从 URL 获取文件名
+                let fileName = 'image.png';
+                try {
+                    const urlParts = new URL(imgInfo.src, location.href);
+                    const pathname = urlParts.pathname;
+                    const filenameMatch = pathname.match(/([^\/]+)\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i);
+                    if (filenameMatch) {
+                        fileName = filenameMatch[1].substring(0, 50) + '.' + filenameMatch[2];
+                    }
+                } catch (_) {}
+
+                fetchImageData(imgInfo.src, (blob, error) => {
+                    if (error || !blob) {
+                        errors.push({ src: imgInfo.src, error: error || '获取图片失败' });
+                        resolve({ oldSrc: imgInfo.src, newSrc: null });
+                        return;
+                    }
+
+                    const fileSize = blob.size;
+
+                    // 请求上传凭证
+                    requestUploadToken(fileName, fileSize, (uploadInfo, tokenError) => {
+                        if (tokenError || !uploadInfo) {
+                            errors.push({ src: imgInfo.src, error: tokenError || '获取上传凭证失败' });
+                            resolve({ oldSrc: imgInfo.src, newSrc: null });
+                            return;
+                        }
+
+                        // 上传到 OSS
+                        uploadImageToOss(uploadInfo, blob, (newPath, uploadError) => {
+                            if (uploadError || !newPath) {
+                                errors.push({ src: imgInfo.src, error: uploadError || '上传图片失败' });
+                                resolve({ oldSrc: imgInfo.src, newSrc: null });
+                            } else {
+                                resolve({ oldSrc: imgInfo.src, newSrc: newPath });
+                            }
+                        });
+                    });
+                });
+            });
+            uploadPromises.push(promise);
+        });
+
+        // 等待所有上传完成
+        Promise.all(uploadPromises).then((results) => {
+            // 替换 Markdown 中的图片 URL
+            let updatedMarkdown = markdown;
+            results.forEach(result => {
+                if (result.newSrc) {
+                    // 替换 Markdown 中的图片引用
+                    const escapedOldSrc = result.oldSrc.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    updatedMarkdown = updatedMarkdown.replace(
+                        new RegExp(`!\\[([^\\]]*)\\]\\(${escapedOldSrc}\\)`, 'g'),
+                        `![$1](${result.newSrc})`
+                    );
+                }
+            });
+
+            if (callback) callback(updatedMarkdown, errors);
+        });
+    }
+
+    // 检查是否为 cnb.cool 域名
+    function isCnbDomain() {
+        return /\b(^|\.)cnb\.cool$/i.test(location.hostname);
+    }
+
     // 直达目标解码：获取 cnb.cool /数字?url= 的目标地址
     function getCnbGotoTarget(urlLike) {
         try {
             const u = new URL(urlLike, location.href);
             const raw = u.searchParams.get('url') || '';
             if (!raw) return '';
+
             // 解码 1-2 次，兼容已编码/双重编码
             let t = decodeURIComponent(raw);
-            try {
-                // 如果仍是百分号编码痕迹，再解一次
-                if (/%[0-9A-Fa-f]{2}/.test(t)) t = decodeURIComponent(t);
-            } catch (_) {}
+            if (/%[0-9A-Fa-f]{2}/.test(t)) {
+                try { t = decodeURIComponent(t); } catch (_) {}
+            }
+
             // 只允许 http/https
-            if (!/^https?:\/\//i.test(t)) return '';
-            return t;
+            return /^https?:\/\//i.test(t) ? t : '';
         } catch (_) {
             return '';
         }
@@ -2671,66 +3007,52 @@ ${md}`, 'text');
 
     // 若当前位于 cnb.cool 的数字跳转页，立即重定向到真实目标
     function handleCnbGotoPage() {
-        const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
-        if (!isCNB) return;
+        if (!isCnbDomain()) return;
+        if (!location.pathname.match(/^\/(\d+)$/)) return;
+        if (!location.search.includes('url=')) return;
 
-        // 匹配路径为 /数字 的格式
-        const pathMatch = location.pathname.match(/^\/(\d+)$/);
-        if (pathMatch && location.search.includes('url=')) {
-            const target = getCnbGotoTarget(location.href);
-            if (target) {
-                // 不留历史记录
-                location.replace(target);
-            }
-        }
+        const target = getCnbGotoTarget(location.href);
+        if (target) location.replace(target);
     }
 
     // 将页面内所有 数字?url= 链接批量改写为直链
     function rewriteCnbGotoLinks(root = document) {
-        try {
-            const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
-            if (!isCNB) return;
+        if (!isCnbDomain()) return;
 
-            // 匹配包含数字路径和url参数的链接
-            const list = root.querySelectorAll('a[href*="?url="]');
-            list.forEach(a => {
-                try {
-                    const href = a.getAttribute('href') || '';
-                    const absUrl = new URL(href, location.href).href;
+        root.querySelectorAll('a[href*="?url="]').forEach(a => {
+            try {
+                const href = a.getAttribute('href');
+                if (!href) return;
 
-                    // 检查是否符合数字路径+url参数的模式
-                    if (absUrl.includes('cnb.cool/') && /\/(\d+)\?url=/i.test(absUrl)) {
-                        const t = getCnbGotoTarget(absUrl);
-                        if (t) a.href = t;
-                    }
-                } catch (_) {}
-            });
-        } catch (_) {}
+                const absUrl = new URL(href, location.href).href;
+                if (!absUrl.includes('cnb.cool/') || !/\/(\d+)\?url=/i.test(absUrl)) return;
+
+                const target = getCnbGotoTarget(absUrl);
+                if (target) a.href = target;
+            } catch (_) {}
+        });
     }
 
     // 事件委托兜底：拦截点击数字跳转链接并直接打开目标
     function cnbGotoClickHandler(e) {
-        const isCNB = /\b(^|\.)cnb\.cool$/i.test(location.hostname);
-        if (!isCNB) return;
+        if (!isCnbDomain()) return;
 
-        // 仅关心主按钮/中键点击到 <a>
+        // 查找被点击的 <a> 元素
         let el = e.target;
         while (el && el !== document && !(el instanceof HTMLAnchorElement)) {
             el = el.parentElement;
         }
         if (!(el instanceof HTMLAnchorElement)) return;
 
-        const href = el.getAttribute('href') || '';
-        // 使用绝对地址判断
-        const abs = (new URL(href, location.href)).href;
+        const href = el.getAttribute('href');
+        if (!href) return;
 
-        // 匹配数字路径+url参数的模式
-        if (!/\/(\d+)\?url=/i.test(abs)) return;
+        const absUrl = new URL(href, location.href).href;
+        if (!/\/(\d+)\?url=/i.test(absUrl)) return;
 
-        const target = getCnbGotoTarget(abs);
+        const target = getCnbGotoTarget(absUrl);
         if (!target) return;
 
-        // 阻止站内跳转页
         e.preventDefault();
         e.stopPropagation();
 
@@ -2743,58 +3065,63 @@ ${md}`, 'text');
         }
     }
 
-    // 初始化
-    function init() {
-        // 读取持久化配置
+    // 清理资源
+    function cleanup() {
+        try { if (__CNB_MO) { __CNB_MO.disconnect(); __CNB_MO = null; } } catch (_) {}
+        try { if (__CNB_CLIP_DIALOG?.parentNode) { __CNB_CLIP_DIALOG.remove(); __CNB_CLIP_DIALOG = null; } } catch (_) {}
+    }
+
+    // 初始化 cnb.cool 相关功能
+    function initCnbFeatures() {
+        if (!isCnbDomain()) return;
+
+        handleCnbGotoPage();
+        rewriteCnbGotoLinks(document);
+        document.addEventListener('click', cnbGotoClickHandler, true);
+
         try {
-            if (typeof GM_getValue === 'function') {
-                const repo = GM_getValue('repoPath', CONFIG.repoPath);
-                const token = GM_getValue('accessToken', CONFIG.accessToken);
-                CONFIG.repoPath = repo || CONFIG.repoPath;
-                CONFIG.accessToken = token || CONFIG.accessToken;
-                const tags = GM_getValue('cnbTags', []);
-                SAVED_TAGS = Array.isArray(tags) ? tags : [];
-                const hk = GM_getValue('cnbHotkey', START_HOTKEY);
-                if (hk) START_HOTKEY = normalizeHotkeyString(hk);
-                const hkEnabled = GM_getValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
-                HOTKEY_ENABLED = !!hkEnabled;
-            }
+            __CNB_MO = new MutationObserver(mutations => {
+                mutations.forEach(m => {
+                    m.addedNodes?.forEach(node => {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            rewriteCnbGotoLinks(node);
+                        }
+                    });
+                });
+            });
+            __CNB_MO.observe(document.documentElement || document.body, { childList: true, subtree: true });
         } catch (_) {}
 
-        createFloatingButton();
-
-        // cnb.cool 跳转页直达与站内直链化
-        handleCnbGotoPage();
-        if (/\b(^|\.)cnb\.cool$/i.test(location.hostname)) {
-            // 首次批量改写
-            rewriteCnbGotoLinks(document);
-            // 事件委托拦截兜底
-            document.addEventListener('click', cnbGotoClickHandler, true);
-            // 监听后续动态内容
-            try {
-                __CNB_MO = new MutationObserver(mutations => {
-                    for (const m of mutations) {
-                        m.addedNodes && m.addedNodes.forEach(node => {
-                            if (node.nodeType === Node.ELEMENT_NODE) {
-                                rewriteCnbGotoLinks(node);
-                            }
-                        });
-                    }
-                });
-                __CNB_MO.observe(document.documentElement || document.body, { childList: true, subtree: true });
-                try {
-                    if (!__CNB_UNLOAD_BOUND) {
-                        window.addEventListener('beforeunload', () => {
-                            try { if (__CNB_MO) { __CNB_MO.disconnect(); __CNB_MO = null; } } catch (_) {}
-                            try { if (__CNB_CLIP_DIALOG && __CNB_CLIP_DIALOG.parentNode) { __CNB_CLIP_DIALOG.remove(); __CNB_CLIP_DIALOG = null; } } catch (_) {}
-                        }, { once: true });
-                        __CNB_UNLOAD_BOUND = true;
-                    }
-                } catch (_) {}
-            } catch (_) {}
+        if (!__CNB_UNLOAD_BOUND) {
+            window.addEventListener('beforeunload', cleanup, { once: true });
+            __CNB_UNLOAD_BOUND = true;
         }
+    }
 
-        // 注册全局快捷键
+    // 读取持久化配置
+    function loadPersistedConfig() {
+        try {
+            if (typeof GM_getValue !== 'function') return;
+
+            const repo = GM_getValue('repoPath', CONFIG.repoPath);
+            const token = GM_getValue('accessToken', CONFIG.accessToken);
+            const tags = GM_getValue('cnbTags', []);
+            const hk = GM_getValue('cnbHotkey', START_HOTKEY);
+            const hkEnabled = GM_getValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
+
+            if (repo) CONFIG.repoPath = repo;
+            if (token) CONFIG.accessToken = token;
+            if (Array.isArray(tags)) SAVED_TAGS = tags;
+            if (hk) START_HOTKEY = normalizeHotkeyString(hk);
+            HOTKEY_ENABLED = !!hkEnabled;
+        } catch (_) {}
+    }
+
+    // 初始化
+    function init() {
+        loadPersistedConfig();
+        createFloatingButton();
+        initCnbFeatures();
         document.addEventListener('keydown', globalHotkeyHandler, true);
     }
 
