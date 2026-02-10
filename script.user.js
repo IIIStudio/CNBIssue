@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.3.7
+// @version      1.3.8
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按“页面信息 + 选择的内容”的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -39,7 +39,8 @@
         apiBase: 'https://api.cnb.cool',
         repoPath: '',
         accessToken: '',
-        issueEndpoint: '/-/issues'
+        issueEndpoint: '/-/issues',
+        uploadEnabled: true
     };
     let SAVED_TAGS = [];
     // 选择模式快捷键（可在设置中修改），规范格式如：Shift+E
@@ -452,6 +453,60 @@
         .cnb-hint {
             color: #666 !important;
             font-size: 12px !important;
+        }
+
+        /* 图片上传开关容器 */
+        .cnb-image-upload-toggle {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            margin-top: 5px !important;
+        }
+
+        /* 开关样式 */
+        .cnb-toggle-switch {
+            position: relative !important;
+            display: inline-block !important;
+            width: 44px !important;
+            height: 24px !important;
+        }
+
+        .cnb-toggle-switch input {
+            opacity: 0 !important;
+            width: 0 !important;
+            height: 0 !important;
+        }
+
+        .cnb-toggle-slider {
+            position: absolute !important;
+            cursor: pointer !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            background-color: #ccc !important;
+            transition: .3s !important;
+            border-radius: 24px !important;
+        }
+
+        .cnb-toggle-slider:before {
+            position: absolute !important;
+            content: "" !important;
+            height: 18px !important;
+            width: 18px !important;
+            left: 3px !important;
+            bottom: 3px !important;
+            background-color: white !important;
+            transition: .3s !important;
+            border-radius: 50% !important;
+        }
+
+        .cnb-toggle-switch input:checked + .cnb-toggle-slider {
+            background-color: #0366d6 !important;
+        }
+
+        .cnb-toggle-switch input:checked + .cnb-toggle-slider:before {
+            transform: translateX(20px) !important;
         }
 
         /* 开关样式（无文字，仅图形） */
@@ -1089,8 +1144,14 @@
 **URL:** ${escapeHtml(pageUrl)}
 **选择时间:** ${new Date().toLocaleString()}
 
-${escapeHtml(selectedContent)}</textarea>
-                ${uniqueImages.length > 0 ? `<div class="cnb-hint" id="cnb-image-upload-status">检测到 ${uniqueImages.length} 张图片，点击创建时将自动上传</div>` : ''}
+                ${escapeHtml(selectedContent)}</textarea>
+                ${uniqueImages.length > 0 ? `<div class="cnb-image-upload-toggle">
+                    <label class="cnb-toggle-switch">
+                        <input type="checkbox" id="cnb-upload-toggle" ${CONFIG.uploadEnabled ? 'checked' : ''}>
+                        <span class="cnb-toggle-slider"></span>
+                    </label>
+                    <div class="cnb-hint" id="cnb-image-upload-status">检测到 ${uniqueImages.length} 张图片，点击创建时将自动上传</div>
+                </div>` : ''}
             </div>
             <div>
                 <label>标签:</label>
@@ -1138,6 +1199,17 @@ ${escapeHtml(selectedContent)}</textarea>
         const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
         const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
         const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
+        const uploadToggle = dialog.querySelector('#cnb-upload-toggle');
+
+        // 监听上传开关变化，保存状态
+        if (uploadToggle) {
+            uploadToggle.addEventListener('change', () => {
+                CONFIG.uploadEnabled = !!uploadToggle.checked;
+                if (typeof GM_setValue === 'function') {
+                    GM_setValue('cnbUploadEnabled', CONFIG.uploadEnabled);
+                }
+            });
+        }
 
         const closeDialog = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -1150,6 +1222,8 @@ ${escapeHtml(selectedContent)}</textarea>
         confirmBtn.addEventListener('click', () => {
             const title = dialog.querySelector('#cnb-issue-title').value;
             const content = dialog.querySelector('#cnb-issue-content').value;
+            const uploadToggle = dialog.querySelector('#cnb-upload-toggle');
+            const shouldUpload = uploadToggle ? uploadToggle.checked : true;
 
             const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
 
@@ -1157,12 +1231,15 @@ ${escapeHtml(selectedContent)}</textarea>
             confirmBtn.disabled = true;
             confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建中...';
 
-            // 如果有图片，先上传图片再创建 Issue
-            if (uniqueImages.length > 0) {
+            // 从编辑后的内容中重新检测图片
+            const imagesInContent = extractImagesFromMarkdown(content);
+
+            // 如果开启了上传且有图片，先上传图片再创建 Issue
+            if (shouldUpload && imagesInContent.length > 0) {
                 const statusEl = dialog.querySelector('#cnb-image-upload-status');
                 if (statusEl) statusEl.textContent = '正在上传图片...';
 
-                uploadImagesAndReplace(content, uniqueImages, (updatedContent, errors) => {
+                uploadImagesAndReplace(content, imagesInContent, (updatedContent, errors) => {
                     if (errors && errors.length > 0) {
                         const failedCount = errors.filter(e => e.error).length;
                         const successCount = errors.length - failedCount;
@@ -1186,6 +1263,7 @@ ${escapeHtml(selectedContent)}</textarea>
                     });
                 });
             } else {
+                // 不上传图片或没有图片，直接创建 Issue
                 createIssue(title, content, labels, (success) => {
                     if (success) {
                         closeDialog();
@@ -1201,6 +1279,8 @@ ${escapeHtml(selectedContent)}</textarea>
             doneBtn.addEventListener('click', () => {
                 const title = dialog.querySelector('#cnb-issue-title').value;
                 const content = dialog.querySelector('#cnb-issue-content').value;
+                const uploadToggle = dialog.querySelector('#cnb-upload-toggle');
+                const shouldUpload = uploadToggle ? uploadToggle.checked : true;
                 const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
 
                 doneBtn.disabled = true;
@@ -1235,12 +1315,15 @@ ${escapeHtml(selectedContent)}</textarea>
                     });
                 };
 
-                // 如果有图片，先上传图片再创建 Issue
-                if (uniqueImages.length > 0) {
+                // 从编辑后的内容中重新检测图片
+                const imagesInContent = extractImagesFromMarkdown(content);
+
+                // 如果开启了上传且有图片，先上传图片再创建 Issue
+                if (shouldUpload && imagesInContent.length > 0) {
                     const statusEl = dialog.querySelector('#cnb-image-upload-status');
                     if (statusEl) statusEl.textContent = '正在上传图片...';
 
-                    uploadImagesAndReplace(content, uniqueImages, (updatedContent, errors) => {
+                    uploadImagesAndReplace(content, imagesInContent, (updatedContent, errors) => {
                         if (errors && errors.length > 0) {
                             const failedCount = errors.filter(e => e.error).length;
                             const successCount = errors.length - failedCount;
@@ -2905,7 +2988,26 @@ ${md}`, 'text');
         });
     }
 
-    // 4. 批量上传图片并替换 Markdown 中的 URL
+    // 4. 从Markdown内容中提取图片链接
+    function extractImagesFromMarkdown(markdown) {
+        const images = [];
+        // 匹配 Markdown 图片语法: ![alt](url)
+        const imgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        let match;
+        const seenSrcs = new Set();
+
+        while ((match = imgRegex.exec(markdown)) !== null) {
+            const src = match[2];
+            if (!seenSrcs.has(src)) {
+                seenSrcs.add(src);
+                images.push({ src: src, alt: match[1] });
+            }
+        }
+
+        return images;
+    }
+
+    // 5. 批量上传图片并替换 Markdown 中的 URL
     function uploadImagesAndReplace(markdown, images, callback) {
         if (!images || images.length === 0) {
             if (callback) callback(markdown, []);
@@ -3108,12 +3210,14 @@ ${md}`, 'text');
             const tags = GM_getValue('cnbTags', []);
             const hk = GM_getValue('cnbHotkey', START_HOTKEY);
             const hkEnabled = GM_getValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
+            const uploadEnabled = GM_getValue('cnbUploadEnabled', true);
 
             if (repo) CONFIG.repoPath = repo;
             if (token) CONFIG.accessToken = token;
             if (Array.isArray(tags)) SAVED_TAGS = tags;
             if (hk) START_HOTKEY = normalizeHotkeyString(hk);
             HOTKEY_ENABLED = !!hkEnabled;
+            CONFIG.uploadEnabled = !!uploadEnabled;
         } catch (_) {}
     }
 
