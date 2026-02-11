@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.4.5
+// @version      1.4.6
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -13,6 +13,14 @@
 // @grant        GM_setValue
 // @connect      api.cnb.cool
 // @connect      cnb.cool
+// @connect      weibo.com
+// @connect      *.weibo.com
+// @connect      sinaimg.cn
+// @connect      *.sinaimg.cn
+// @connect      tvax*.sinaimg.cn
+// @connect      tva*.sinaimg.cn
+// @connect      wx*.sinaimg.cn
+// @connect      hb*.sinaimg.cn
 // @license MIT
 // ==/UserScript==
 
@@ -1152,6 +1160,20 @@
     function showIssueDialog(selected) {
         stopAreaSelection(); // 先退出选择模式
 
+        // 获取选择的内容并转换为Markdown（支持多选）
+        const elements = Array.isArray(selected) ? selected : (selected ? [selected] : []);
+        const pageTitle = document.title;
+        const pageUrl = window.location.href;
+
+        // 检测是否为微博网站
+        const isWeibo = location.hostname === 'weibo.com' || location.hostname.endsWith('.weibo.com');
+
+        // 微博特殊处理：截图模式
+        if (isWeibo && elements.length > 0) {
+            handleWeiboSelection(elements, pageUrl, pageTitle);
+            return;
+        }
+
         // 创建遮罩层
         const overlay = document.createElement('div');
         overlay.className = 'cnb-issue-overlay';
@@ -1159,15 +1181,6 @@
         // 创建对话框
         const dialog = document.createElement('div');
         dialog.className = 'cnb-issue-dialog';
-
-        // 强化筛选容器为 flex 并固定 5px 间距（避免被站点样式覆盖）
-        GM_addStyle(`
-            .cnb-issue-dialog .cnb-issue-filter {
-                display: flex !important;
-                flex-wrap: wrap !important;
-                gap: 5px !important;
-            }
-        `);
 
         // 强化筛选标签按钮样式（避免被站点样式覆盖，统一为胶囊风格）
         GM_addStyle(`
@@ -1208,7 +1221,6 @@
         `);
 
         // 获取选择的内容并转换为Markdown（支持多选）
-        const elements = Array.isArray(selected) ? selected : (selected ? [selected] : []);
         const parts = elements.map(el => (getSelectedContentAsMarkdown(el) || '').trim()).filter(Boolean);
         const joined = parts.join(`
 
@@ -1218,8 +1230,6 @@
 `);
         let selectedContent = (parts.length > 1 ? `
 ` : '') + joined;
-        const pageTitle = document.title;
-        const pageUrl = window.location.href;
 
         // 收集所有需要上传的图片
         const allImages = [];
@@ -1584,6 +1594,572 @@ ${escapeHtml(selectedContent)}</textarea>
         return div.innerHTML;
     }
 
+    // 处理微博选择：截图并创建Issue
+    function handleWeiboSelection(elements, pageUrl, pageTitle) {
+        // 加载 html2canvas 库（如果未加载）
+        if (typeof html2canvas === 'undefined') {
+            loadHtml2CanvasLibrary(() => {
+                processWeiboCapture(elements, pageUrl, pageTitle);
+            });
+        } else {
+            processWeiboCapture(elements, pageUrl, pageTitle);
+        }
+    }
+
+    // 加载 html2canvas 库
+    function loadHtml2CanvasLibrary(callback) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+        script.onload = callback;
+        script.onerror = () => {
+            if (typeof GM_notification === 'function') {
+                GM_notification({
+                    text: 'html2canvas 库加载失败',
+                    title: 'CNB Issue工具',
+                    timeout: 3000
+                });
+            }
+        };
+        document.head.appendChild(script);
+    }
+
+    // 处理微博截图
+    function processWeiboCapture(elements, pageUrl, pageTitle) {
+        // 提取出处信息（从选择区域中查找时间链接）
+        let sourceUrl = pageUrl;
+        let sourceTime = new Date().toLocaleString();
+
+        // 遍历选择区域，查找时间链接
+        for (const element of elements) {
+            const timeLink = element.querySelector('a[class*="_time"]');
+            if (timeLink && timeLink.href) {
+                sourceUrl = timeLink.href;
+                // 从 title 属性中提取时间
+                if (timeLink.title) {
+                    sourceTime = timeLink.title;
+                }
+                break;
+            }
+        }
+
+        // 提取标题（从选择区域中查找微博正文）
+        let weiboTitle = pageTitle;
+        const wbtextElement = elements[0].querySelector('[class*="_wbtext"]');
+        if (wbtextElement) {
+            const textContent = wbtextElement.textContent.trim();
+            // 限制标题长度为100字符
+            weiboTitle = textContent.length > 100 ? textContent.substring(0, 100) + '...' : textContent;
+        }
+
+        // 创建遮罩层和对话框
+        const overlay = document.createElement('div');
+        overlay.className = 'cnb-issue-overlay';
+
+        const dialog = document.createElement('div');
+        dialog.className = 'cnb-issue-dialog';
+
+        dialog.innerHTML = `
+            <h3>创建 CNB Issue (微博截图)</h3>
+            <div>
+                <label>标题:</label>
+                <input class="cnb-control" type="text" id="cnb-issue-title" value="${escapeHtml(weiboTitle)}" placeholder="输入Issue标题">
+            </div>
+            <div>
+                <label>出处信息:</label>
+                <textarea class="cnb-control" id="cnb-issue-content" readonly style="height: 120px;">## 出处
+**URL:** ${escapeHtml(sourceUrl)}
+**选择时间:** ${sourceTime}
+下面是生成的图片</textarea>
+                <div class="cnb-hint" id="cnb-capture-status">点击创建时将自动生成并上传截图</div>
+            </div>
+            <div>
+                <label>标签:</label>
+                <div id="cnb-issue-tags"></div>
+            </div>
+            <div class="cnb-issue-dialog-buttons">
+                <button class="cnb-issue-btn-cancel">取消</button>
+                <button class="cnb-issue-btn-done">创建完成Issue</button>
+                <button class="cnb-issue-btn-confirm">创建Issue</button>
+            </div>
+        `;
+
+        // 渲染标签选择
+        const tagsContainer = dialog.querySelector('#cnb-issue-tags');
+        let selectedTags = [];
+        if (tagsContainer) {
+            tagsContainer.innerHTML = '';
+            const tags = Array.isArray(SAVED_TAGS) ? SAVED_TAGS : [];
+            if (tags.length === 0) {
+                const hint = document.createElement('div');
+                hint.className = 'cnb-hint';
+                hint.textContent = '在设置中添加标签后可在此选择';
+                tagsContainer.appendChild(hint);
+            } else {
+                tags.forEach(tag => {
+                    const btnTag = document.createElement('button');
+                    btnTag.type = 'button';
+                    btnTag.className = 'cnb-tag-btn';
+                    btnTag.textContent = tag;
+                    btnTag.addEventListener('click', () => {
+                        const idx = selectedTags.indexOf(tag);
+                        if (idx >= 0) {
+                            selectedTags.splice(idx, 1);
+                            btnTag.classList.remove('active');
+                        } else {
+                            selectedTags.push(tag);
+                            btnTag.classList.add('active');
+                        }
+                    });
+                    tagsContainer.appendChild(btnTag);
+                });
+            }
+        }
+
+        const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
+        const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
+        const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
+
+        const closeDialog = () => {
+            if (document.body.contains(overlay)) document.body.removeChild(overlay);
+            if (document.body.contains(dialog)) document.body.removeChild(dialog);
+        };
+
+        overlay.addEventListener('click', closeDialog);
+        cancelBtn.addEventListener('click', closeDialog);
+
+        // 创建并完成 Issue
+        doneBtn.addEventListener('click', async () => {
+            const title = dialog.querySelector('#cnb-issue-title').value;
+            const content = dialog.querySelector('#cnb-issue-content').value;
+            const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
+
+            doneBtn.disabled = true;
+            confirmBtn.disabled = true;
+            doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建并完成中...';
+
+            // 生成截图
+            const statusEl = dialog.querySelector('#cnb-capture-status');
+            if (statusEl) statusEl.textContent = '正在生成截图...';
+
+            try {
+                // 临时保存原始样式
+                const originalStyles = [];
+                elements.forEach(el => {
+                    originalStyles.push({
+                        el: el,
+                        outline: el.style.outline,
+                        boxShadow: el.style.boxShadow,
+                        zIndex: el.style.zIndex
+                    });
+                    // 移除选择样式
+                    el.style.outline = 'none';
+                    el.style.boxShadow = 'none';
+                    el.style.zIndex = '999999';
+                });
+
+                // 预加载选中区域内的所有图片，解决跨域图片显示空白的问题
+                // 使用 GM_xmlhttpRequest 来获取图片数据，绕过跨域限制
+                const imagePromises = [];
+
+                elements.forEach(el => {
+                    const imgs = el.querySelectorAll('img');
+                    imgs.forEach(img => {
+                        if (img.src && !img.src.startsWith('data:')) {
+                            const promise = new Promise((resolve) => {
+                                GM_xmlhttpRequest({
+                                    method: 'GET',
+                                    url: img.src,
+                                    responseType: 'blob',
+                                    headers: {
+                                        'Referer': window.location.href
+                                    },
+                                    onload: (response) => {
+                                        try {
+                                            if (response.response && response.response instanceof Blob) {
+                                                const reader = new FileReader();
+                                                reader.onload = () => {
+                                                    img.src = reader.result;
+                                                    console.log('Converted image with GM_xmlhttpRequest:', img.src.substring(0, 50) + '...');
+                                                    resolve();
+                                                };
+                                                reader.onerror = () => {
+                                                    console.warn('Failed to read blob');
+                                                    resolve();
+                                                };
+                                                reader.readAsDataURL(response.response);
+                                            } else {
+                                                resolve();
+                                            }
+                                        } catch (e) {
+                                            console.warn('Failed to convert image:', e);
+                                            resolve();
+                                        }
+                                    },
+                                    onerror: () => {
+                                        console.warn('Failed to fetch image with GM_xmlhttpRequest:', img.src);
+                                        resolve();
+                                    }
+                                });
+                            });
+                            imagePromises.push(promise);
+                        }
+                    });
+                });
+
+                // 等待所有图片加载或转换完成
+                await Promise.all(imagePromises);
+
+                // 等待元素重新渲染
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                // 计算截图区域
+                const bounds = elements.map(el => el.getBoundingClientRect());
+                const minX = Math.min(...bounds.map(b => b.left)) - 10;
+                const minY = Math.min(...bounds.map(b => b.top)) - 10;
+                const maxX = Math.max(...bounds.map(b => b.right)) + 10;
+                const maxY = Math.max(...bounds.map(b => b.bottom)) + 10;
+
+                // 使用 html2canvas 生成截图
+                const canvas = await html2canvas(document.body, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    x: minX,
+                    y: minY,
+                    width: maxX - minX,
+                    height: maxY - minY,
+                    ignoreElements: (element) => {
+                        // 忽略对话框
+                        return element.classList.contains('cnb-issue-dialog') ||
+                               element.classList.contains('cnb-issue-overlay') ||
+                               element.closest('.cnb-issue-dialog') ||
+                               element.closest('.cnb-issue-overlay');
+                    }
+                });
+
+                // 恢复原始样式
+                originalStyles.forEach(item => {
+                    item.el.style.outline = item.outline;
+                    item.el.style.boxShadow = item.boxShadow;
+                    item.el.style.zIndex = item.zIndex;
+                });
+
+                // 转换为 blob
+                const blob = await new Promise((resolve, reject) => {
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('Canvas toBlob failed'));
+                        }
+                    }, 'image/png');
+                });
+
+                if (!blob) {
+                    doneBtn.disabled = false;
+                    confirmBtn.disabled = false;
+                    doneBtn.innerHTML = '创建完成Issue';
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '截图生成失败',
+                            title: 'CNB Issue工具',
+                            timeout: 3000
+                        });
+                    }
+                    return;
+                }
+
+                if (statusEl) statusEl.textContent = '正在上传截图...';
+                doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>上传中...';
+
+                // 上传截图
+                const fileName = `weibo_${Date.now()}.png`;
+                requestUploadToken(fileName, blob.size, (uploadInfo, tokenError) => {
+                    if (tokenError || !uploadInfo) {
+                        doneBtn.disabled = false;
+                        confirmBtn.disabled = false;
+                        doneBtn.innerHTML = '创建完成Issue';
+                        if (typeof GM_notification === 'function') {
+                            GM_notification({
+                                text: '获取上传凭证失败: ' + tokenError,
+                                title: 'CNB Issue工具',
+                                timeout: 5000
+                            });
+                        }
+                        return;
+                    }
+
+                    uploadImageToOss(uploadInfo, blob, (imageUrl, uploadError) => {
+                        if (uploadError || !imageUrl) {
+                            doneBtn.disabled = false;
+                            confirmBtn.disabled = false;
+                            doneBtn.innerHTML = '创建完成Issue';
+                            if (typeof GM_notification === 'function') {
+                                GM_notification({
+                                    text: '截图上传失败: ' + uploadError,
+                                    title: 'CNB Issue工具',
+                                    timeout: 5000
+                                });
+                            }
+                            return;
+                        }
+
+                        // 更新内容为图片
+                        const updatedContent = content + '\n\n' + `![微博截图](${imageUrl})`;
+
+                        // 创建并完成 Issue
+                        if (statusEl) statusEl.textContent = '正在创建Issue...';
+                        doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建中...';
+
+                        createIssue(title, updatedContent, labels, (success, issueId) => {
+                            if (success && issueId != null) {
+                                closeIssue(issueId, 'completed', (ok) => {
+                                    if (!ok) {
+                                        doneBtn.disabled = false;
+                                        confirmBtn.disabled = false;
+                                        doneBtn.innerHTML = '创建完成Issue';
+                                        return;
+                                    }
+                                    if (typeof GM_notification === 'function') {
+                                        GM_notification({
+                                            text: 'Issue已标记为已完成（closed: completed）',
+                                            title: 'CNB Issue工具',
+                                            timeout: 3000
+                                        });
+                                    }
+                                    closeDialog();
+                                });
+                            } else {
+                                doneBtn.disabled = false;
+                                confirmBtn.disabled = false;
+                                doneBtn.innerHTML = '创建完成Issue';
+                            }
+                        });
+                    });
+                });
+            } catch (error) {
+                console.error('html2canvas error:', error);
+                doneBtn.disabled = false;
+                confirmBtn.disabled = false;
+                doneBtn.innerHTML = '创建完成Issue';
+                if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        text: '截图生成失败: ' + error.message,
+                        title: 'CNB Issue工具',
+                        timeout: 5000
+                    });
+                }
+            }
+        });
+
+        // 创建 Issue
+        confirmBtn.addEventListener('click', async () => {
+            const title = dialog.querySelector('#cnb-issue-title').value;
+            const content = dialog.querySelector('#cnb-issue-content').value;
+            const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
+
+            confirmBtn.disabled = true;
+            confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>生成截图中...';
+
+            // 生成截图
+            const statusEl = dialog.querySelector('#cnb-capture-status');
+            if (statusEl) statusEl.textContent = '正在生成截图...';
+
+            try {
+            // 使用原始元素直接截图，不克隆（避免丢失动态加载的内容）
+            // 临时保存原始样式
+            const originalStyles = [];
+            elements.forEach(el => {
+                originalStyles.push({
+                    el: el,
+                    outline: el.style.outline,
+                    boxShadow: el.style.boxShadow,
+                    zIndex: el.style.zIndex
+                });
+                // 移除选择样式
+                el.style.outline = 'none';
+                el.style.boxShadow = 'none';
+                el.style.zIndex = '999999';
+            });
+
+            // 预加载选中区域内的所有图片，解决跨域图片显示空白的问题
+            // 使用 GM_xmlhttpRequest 来获取图片数据，绕过跨域限制
+            const imagePromises = [];
+
+            elements.forEach(el => {
+                const imgs = el.querySelectorAll('img');
+                imgs.forEach(img => {
+                    if (img.src && !img.src.startsWith('data:')) {
+                        const promise = new Promise((resolve) => {
+                            GM_xmlhttpRequest({
+                                method: 'GET',
+                                url: img.src,
+                                responseType: 'blob',
+                                headers: {
+                                    'Referer': window.location.href
+                                },
+                                onload: (response) => {
+                                    try {
+                                        if (response.response && response.response instanceof Blob) {
+                                            const reader = new FileReader();
+                                            reader.onload = () => {
+                                                img.src = reader.result;
+                                                console.log('Converted image with GM_xmlhttpRequest:', img.src.substring(0, 50) + '...');
+                                                resolve();
+                                            };
+                                            reader.onerror = () => {
+                                                console.warn('Failed to read blob');
+                                                resolve();
+                                            };
+                                            reader.readAsDataURL(response.response);
+                                        } else {
+                                            resolve();
+                                        }
+                                    } catch (e) {
+                                        console.warn('Failed to convert image:', e);
+                                        resolve();
+                                    }
+                                },
+                                onerror: () => {
+                                    console.warn('Failed to fetch image with GM_xmlhttpRequest:', img.src);
+                                    resolve();
+                                }
+                            });
+                        });
+                        imagePromises.push(promise);
+                    }
+                });
+            });
+
+            // 等待所有图片加载或转换完成
+            await Promise.all(imagePromises);
+
+            // 等待元素重新渲染
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // 使用 html2canvas 生成截图
+            const canvas = await html2canvas(document.body, {
+                backgroundColor: '#ffffff',
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                logging: false,
+                // 只截取选中的元素
+                x: elements[0].getBoundingClientRect().left - 10,
+                y: elements[0].getBoundingClientRect().top - 10,
+                width: Math.max(...elements.map(el => el.getBoundingClientRect().right)) - Math.min(...elements.map(el => el.getBoundingClientRect().left)) + 20,
+                height: Math.max(...elements.map(el => el.getBoundingClientRect().bottom)) - Math.min(...elements.map(el => el.getBoundingClientRect().top)) + 20,
+                ignoreElements: (element) => {
+                    // 忽略对话框
+                    return element.classList.contains('cnb-issue-dialog') || element.classList.contains('cnb-issue-overlay');
+                }
+            });
+
+            // 恢复原始样式
+            originalStyles.forEach(item => {
+                item.el.style.outline = item.outline;
+                item.el.style.boxShadow = item.boxShadow;
+                item.el.style.zIndex = item.zIndex;
+            });
+
+                // 转换为 blob
+                const blob = await new Promise((resolve, reject) => {
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('Canvas toBlob failed'));
+                        }
+                    }, 'image/png');
+                });
+
+                if (!blob) {
+                    confirmBtn.disabled = false;
+                    confirmBtn.innerHTML = '创建Issue';
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '截图生成失败',
+                            title: 'CNB Issue工具',
+                            timeout: 3000
+                        });
+                    }
+                    return;
+                }
+
+                if (statusEl) statusEl.textContent = '正在上传截图...';
+                confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>上传中...';
+
+                // 上传截图
+                const fileName = `weibo_${Date.now()}.png`;
+                requestUploadToken(fileName, blob.size, (uploadInfo, tokenError) => {
+                    if (tokenError || !uploadInfo) {
+                        confirmBtn.disabled = false;
+                        confirmBtn.innerHTML = '创建Issue';
+                        if (typeof GM_notification === 'function') {
+                            GM_notification({
+                                text: '获取上传凭证失败: ' + tokenError,
+                                title: 'CNB Issue工具',
+                                timeout: 5000
+                            });
+                        }
+                        return;
+                    }
+
+                    uploadImageToOss(uploadInfo, blob, (imageUrl, uploadError) => {
+                        if (uploadError || !imageUrl) {
+                            confirmBtn.disabled = false;
+                            confirmBtn.innerHTML = '创建Issue';
+                            if (typeof GM_notification === 'function') {
+                                GM_notification({
+                                    text: '截图上传失败: ' + uploadError,
+                                    title: 'CNB Issue工具',
+                                    timeout: 5000
+                                });
+                            }
+                            return;
+                        }
+
+                        // 更新内容为图片
+                        const updatedContent = content + '\n\n' + `![微博截图](${imageUrl})`;
+
+                        // 创建 Issue
+                        if (statusEl) statusEl.textContent = '正在创建Issue...';
+                        confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建中...';
+
+                        createIssue(title, updatedContent, labels, (success) => {
+                            if (success) {
+                                closeDialog();
+                            } else {
+                                confirmBtn.disabled = false;
+                                confirmBtn.innerHTML = '创建Issue';
+                            }
+                        });
+                    });
+                });
+            } catch (error) {
+                console.error('html2canvas error:', error);
+                confirmBtn.disabled = false;
+                confirmBtn.innerHTML = '创建Issue';
+                if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        text: '截图生成失败: ' + error.message,
+                        title: 'CNB Issue工具',
+                        timeout: 5000
+                    });
+                }
+            }
+        });
+
+        document.body.appendChild(overlay);
+        document.body.appendChild(dialog);
+
+        // 自动聚焦到标题输入框
+        dialog.querySelector('#cnb-issue-title').focus();
+        dialog.querySelector('#cnb-issue-title').select();
+    }
+
     // 设置弹窗
     function openSettingsDialog() {
         // 单例：若已存在，先移除旧实例
@@ -1658,6 +2234,33 @@ ${escapeHtml(selectedContent)}</textarea>
         const addTagBtn = dialog.querySelector('#cnb-setting-addtag');
         const hotkeyInput = dialog.querySelector('#cnb-setting-hotkey');
         const hotkeyEnabledInput = dialog.querySelector('#cnb-setting-hotkey-enabled');
+        const repoInput = dialog.querySelector('#cnb-setting-repo');
+        const tokenInput = dialog.querySelector('#cnb-setting-token');
+
+        // 监听仓库和密钥变更，清空标签并重新获取
+        function onRepoOrTokenChange() {
+            const repo = repoInput.value.trim();
+            const token = tokenInput.value.trim();
+            if (repo && token) {
+                // 清空现有标签
+                SAVED_TAGS = [];
+                if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
+                renderTagsList();
+                // 重新获取标签
+                fetchRepoTags(repo, token);
+            }
+        }
+
+        if (repoInput) {
+            repoInput.addEventListener('change', onRepoOrTokenChange);
+            repoInput.addEventListener('blur', onRepoOrTokenChange);
+        }
+
+        if (tokenInput) {
+            tokenInput.addEventListener('change', onRepoOrTokenChange);
+            tokenInput.addEventListener('blur', onRepoOrTokenChange);
+        }
+
         if (hotkeyEnabledInput) {
             hotkeyEnabledInput.addEventListener('change', () => {
                 HOTKEY_ENABLED = !!hotkeyEnabledInput.checked;
@@ -1880,15 +2483,12 @@ ${escapeHtml(selectedContent)}</textarea>
 
                 const labelNames = allLabels.map(l => l.name || l.title || l).filter(Boolean);
 
+                // 直接替换标签列表
+                SAVED_TAGS = labelNames;
+                if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
+                renderTagsList();
+
                 if (labelNames.length > 0) {
-                    SAVED_TAGS = [];
-                    labelNames.forEach(name => {
-                        if (!SAVED_TAGS.includes(name)) {
-                            SAVED_TAGS.push(name);
-                        }
-                    });
-                    if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
-                    renderTagsList();
                     if (typeof GM_notification === 'function') {
                         GM_notification({ text: `已获取 ${labelNames.length} 个标签`, title: 'CNB Issue工具', timeout: 2000 });
                     }
