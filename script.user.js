@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.4.4
+// @version      1.4.5
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -1251,8 +1251,7 @@
                 <textarea class="cnb-control" id="cnb-issue-content" placeholder="Markdown内容将自动生成">## 出处
 **URL:** ${escapeHtml(pageUrl)}
 **选择时间:** ${new Date().toLocaleString()}
-
-                ${escapeHtml(selectedContent)}</textarea>
+${escapeHtml(selectedContent)}</textarea>
                 ${uniqueImages.length > 0 ? `<div class="cnb-image-upload-toggle">
                     <label class="cnb-toggle-switch">
                         <input type="checkbox" id="cnb-upload-toggle" ${CONFIG.uploadEnabled ? 'checked' : ''}>
@@ -1483,27 +1482,40 @@
 
     // 清理Markdown内容（用于显示）
     function cleanMarkdownContent(markdown) {
-        return markdown
-            // 删除表情图片（以 ![:grimacing:] 格式）
-            .replace(/!\[:[^\]]+\]\([^)]+\)/g, '')
-            // 将复杂图片链接格式转换为纯图片格式
-            .replace(/\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]+\)/g, '![$1]($2)')
-            .replace(/\n{3,}/g, '\n\n') // 多个空行合并为两个
-            // 去除首尾空白
-            .replace(/^\s+|\s+$/g, '');
+        // 删除表情图片（以 ![:grimacing:] 格式）
+        markdown = markdown.replace(/!\[:[^\]]+\]\([^)]+\)/g, '');
+        // 将复杂图片链接格式转换为纯图片格式
+        markdown = markdown.replace(/\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]+\)/g, '![$1]($2)');
+
+        // 删除引用块中的空行（> 后面只有空格或空行的）
+        markdown = markdown.replace(/^>\s*$/gm, '');
+
+        // 多个空行合并为两个
+        markdown = markdown.replace(/\n{3,}/g, '\n\n');
+
+        // 去除首尾空白
+        markdown = markdown.replace(/^\s+|\s+$/g, '');
+
+        return markdown;
     }
 
     // 清理Markdown内容（用于复制，更激进的换行处理）
     function cleanMarkdownContentForCopy(markdown) {
-        return markdown
-            // 删除表情图片（以 ![:grimacing:] 格式）
-            .replace(/!\[:[^\]]+\]\([^)]+\)/g, '')
-            // 将复杂图片链接格式转换为纯图片格式
-            .replace(/\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]+\)/g, '![$1]($2)')
-            // 先移除首尾空白
-            .replace(/^\s+|\s+$/g, '')
-            // 多个空行合并为两个
-            .replace(/\n{3,}/g, '\n\n');
+        // 删除表情图片（以 ![:grimacing:] 格式）
+        markdown = markdown.replace(/!\[:[^\]]+\]\([^)]+\)/g, '');
+        // 将复杂图片链接格式转换为纯图片格式
+        markdown = markdown.replace(/\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]+\)/g, '![$1]($2)');
+
+        // 删除引用块中的空行（> 后面只有空格或空行的）
+        markdown = markdown.replace(/^>\s*$/gm, '');
+
+        // 多个空行合并为两个
+        markdown = markdown.replace(/\n{3,}/g, '\n\n');
+
+        // 去除首尾空白
+        markdown = markdown.replace(/^\s+|\s+$/g, '');
+
+        return markdown;
     }
 
     // 轻量 Markdown 转 HTML（基础语法）
