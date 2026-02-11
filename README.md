@@ -2,9 +2,7 @@
 
 一个 Tampermonkey（油猴）脚本，可在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，并按"页面信息 + 选择的内容"格式展示，支持通过 CNB 接口直接创建 Issue存储在CNB中。
 
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue@main/image/17.png)
-
-![](./image/17.png)
+![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/17.png)
 
 B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 
@@ -79,6 +77,10 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 - 确保访问令牌具有足够的仓库操作权限
 
 ## 更新日志
+### 版本 1.4.4
+- 修复图片链接处理
+- 修改UI
+- 添加支持剪贴板多个IssueID
 
 ### 版本 1.3.4
 - 修复多层 div 不显示 h 标签问题
@@ -116,6 +118,6 @@ B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
 
 ## 图片
 
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue@main/image/13.jpg)
+![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/13.jpg)
 
-![](https://cdn.jsdmirror.com/cnb/IIIStudio/Greasemonkey/CNBIssue@main/image/15.jpg)
+![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/15.jpg)
