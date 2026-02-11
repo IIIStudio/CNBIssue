@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.4.6
+// @version      1.4.7
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -1742,6 +1742,13 @@ ${escapeHtml(selectedContent)}</textarea>
             if (statusEl) statusEl.textContent = '正在生成截图...';
 
             try {
+                // 先计算截图区域（在修改样式之前获取准确坐标）
+                const bounds = elements.map(el => el.getBoundingClientRect());
+                const minX = Math.min(...bounds.map(b => b.left)) - 10;
+                const minY = Math.min(...bounds.map(b => b.top)) - 10;
+                const maxX = Math.max(...bounds.map(b => b.right)) + 10;
+                const maxY = Math.max(...bounds.map(b => b.bottom)) + 10;
+
                 // 临时保存原始样式
                 const originalStyles = [];
                 elements.forEach(el => {
@@ -1754,7 +1761,8 @@ ${escapeHtml(selectedContent)}</textarea>
                     // 移除选择样式
                     el.style.outline = 'none';
                     el.style.boxShadow = 'none';
-                    el.style.zIndex = '999999';
+                    // 不要修改 zIndex，避免影响布局
+                    // el.style.zIndex = '999999';
                 });
 
                 // 预加载选中区域内的所有图片，解决跨域图片显示空白的问题
@@ -1811,13 +1819,6 @@ ${escapeHtml(selectedContent)}</textarea>
 
                 // 等待元素重新渲染
                 await new Promise(resolve => setTimeout(resolve, 500));
-
-                // 计算截图区域
-                const bounds = elements.map(el => el.getBoundingClientRect());
-                const minX = Math.min(...bounds.map(b => b.left)) - 10;
-                const minY = Math.min(...bounds.map(b => b.top)) - 10;
-                const maxX = Math.max(...bounds.map(b => b.right)) + 10;
-                const maxY = Math.max(...bounds.map(b => b.bottom)) + 10;
 
                 // 使用 html2canvas 生成截图
                 const canvas = await html2canvas(document.body, {
@@ -1968,21 +1969,29 @@ ${escapeHtml(selectedContent)}</textarea>
             if (statusEl) statusEl.textContent = '正在生成截图...';
 
             try {
-            // 使用原始元素直接截图，不克隆（避免丢失动态加载的内容）
-            // 临时保存原始样式
-            const originalStyles = [];
-            elements.forEach(el => {
-                originalStyles.push({
-                    el: el,
-                    outline: el.style.outline,
-                    boxShadow: el.style.boxShadow,
-                    zIndex: el.style.zIndex
+                // 先计算截图区域（在修改样式之前获取准确坐标）
+                const bounds = elements.map(el => el.getBoundingClientRect());
+                const minX = Math.min(...bounds.map(b => b.left)) - 10;
+                const minY = Math.min(...bounds.map(b => b.top)) - 10;
+                const maxX = Math.max(...bounds.map(b => b.right)) + 10;
+                const maxY = Math.max(...bounds.map(b => b.bottom)) + 10;
+
+                // 使用原始元素直接截图，不克隆（避免丢失动态加载的内容）
+                // 临时保存原始样式
+                const originalStyles = [];
+                elements.forEach(el => {
+                    originalStyles.push({
+                        el: el,
+                        outline: el.style.outline,
+                        boxShadow: el.style.boxShadow,
+                        zIndex: el.style.zIndex
+                    });
+                    // 移除选择样式
+                    el.style.outline = 'none';
+                    el.style.boxShadow = 'none';
+                    // 不要修改 zIndex，避免影响布局
+                    // el.style.zIndex = '999999';
                 });
-                // 移除选择样式
-                el.style.outline = 'none';
-                el.style.boxShadow = 'none';
-                el.style.zIndex = '999999';
-            });
 
             // 预加载选中区域内的所有图片，解决跨域图片显示空白的问题
             // 使用 GM_xmlhttpRequest 来获取图片数据，绕过跨域限制
@@ -2039,18 +2048,17 @@ ${escapeHtml(selectedContent)}</textarea>
             // 等待元素重新渲染
             await new Promise(resolve => setTimeout(resolve, 500));
 
-            // 使用 html2canvas 生成截图
+            // 使用 html2canvas 生成截图（使用之前计算的坐标）
             const canvas = await html2canvas(document.body, {
                 backgroundColor: '#ffffff',
                 scale: 2,
                 useCORS: true,
                 allowTaint: true,
                 logging: false,
-                // 只截取选中的元素
-                x: elements[0].getBoundingClientRect().left - 10,
-                y: elements[0].getBoundingClientRect().top - 10,
-                width: Math.max(...elements.map(el => el.getBoundingClientRect().right)) - Math.min(...elements.map(el => el.getBoundingClientRect().left)) + 20,
-                height: Math.max(...elements.map(el => el.getBoundingClientRect().bottom)) - Math.min(...elements.map(el => el.getBoundingClientRect().top)) + 20,
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
                 ignoreElements: (element) => {
                     // 忽略对话框
                     return element.classList.contains('cnb-issue-dialog') || element.classList.contains('cnb-issue-overlay');
