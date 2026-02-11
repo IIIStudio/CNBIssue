@@ -2196,6 +2196,7 @@ ${escapeHtml(selectedContent)}</textarea>
         } catch (_) {}
 
         dialog.innerHTML = `
+            <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:10px; top:10px; border:none; background:transparent; color:#000; font-size:20px; line-height:1; cursor:pointer; font-weight:700;">×</button>
             <h3>CNB 设置</h3>
             <div>
                 <label>仓库路径 (owner/repo):</label>
@@ -2230,10 +2231,6 @@ ${escapeHtml(selectedContent)}</textarea>
                 </div>
                 <div id="cnb-setting-tags-list" class="cnb-tags-list"></div>
             </div>
-            <div class="cnb-issue-dialog-buttons">
-                <button class="cnb-issue-btn-cancel">取消</button>
-                <button class="cnb-issue-btn-confirm">保存</button>
-            </div>
         `;
 
         // 渲染与管理标签
@@ -2244,29 +2241,59 @@ ${escapeHtml(selectedContent)}</textarea>
         const hotkeyEnabledInput = dialog.querySelector('#cnb-setting-hotkey-enabled');
         const repoInput = dialog.querySelector('#cnb-setting-repo');
         const tokenInput = dialog.querySelector('#cnb-setting-token');
+        const clipIssueInput = dialog.querySelector('#cnb-setting-clip-issue');
 
-        // 监听仓库和密钥变更，清空标签并重新获取
-        function onRepoOrTokenChange() {
-            const repo = repoInput.value.trim();
-            const token = tokenInput.value.trim();
-            if (repo && token) {
-                // 清空现有标签
-                SAVED_TAGS = [];
-                if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
-                renderTagsList();
-                // 重新获取标签
-                fetchRepoTags(repo, token);
-            }
-        }
-
+        // 仓库路径即时保存
         if (repoInput) {
-            repoInput.addEventListener('change', onRepoOrTokenChange);
-            repoInput.addEventListener('blur', onRepoOrTokenChange);
+            repoInput.addEventListener('input', () => {
+                const repo = repoInput.value.trim();
+                if (repo) {
+                    CONFIG.repoPath = repo;
+                    if (typeof GM_setValue === 'function') GM_setValue('repoPath', repo);
+                }
+            });
         }
 
+        // 访问令牌即时保存
         if (tokenInput) {
-            tokenInput.addEventListener('change', onRepoOrTokenChange);
-            tokenInput.addEventListener('blur', onRepoOrTokenChange);
+            tokenInput.addEventListener('input', () => {
+                const token = tokenInput.value.trim();
+                if (token) {
+                    CONFIG.accessToken = token;
+                    if (typeof GM_setValue === 'function') GM_setValue('accessToken', token);
+                }
+            });
+        }
+
+        // 剪贴板位置即时保存并生效
+        if (clipIssueInput) {
+            const updateClipIssue = () => {
+                const clipIssue = clipIssueInput.value.trim();
+                if (typeof GM_setValue === 'function') GM_setValue('cnbClipboardIssue', clipIssue);
+                // 即时生效：根据是否有值来动态增删"剪贴板"按钮
+                const dock = document.querySelector('.cnb-dock');
+                if (dock) {
+                    let btn = dock.querySelector('#cnb-btn-clipboard');
+                    if (clipIssue) {
+                        if (!btn) {
+                            const btnClipboard = document.createElement('button');
+                            btnClipboard.id = 'cnb-btn-clipboard';
+                            btnClipboard.className = 'cnb-dock-btn';
+                            btnClipboard.textContent = '剪贴板';
+                            btnClipboard.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                if (typeof openClipboardWindow === 'function') {
+                                    openClipboardWindow();
+                                }
+                            });
+                            dock.appendChild(btnClipboard);
+                        }
+                    } else {
+                        if (btn) btn.remove();
+                    }
+                }
+            };
+            clipIssueInput.addEventListener('input', updateClipIssue);
         }
 
         if (hotkeyEnabledInput) {
@@ -2281,6 +2308,9 @@ ${escapeHtml(selectedContent)}</textarea>
                 e.preventDefault();
                 const str = eventToHotkeyString(e);
                 hotkeyInput.value = toDisplayHotkeyString(normalizeHotkeyString(str));
+                // 快捷键即时保存
+                START_HOTKEY = normalizeHotkeyString(str);
+                if (typeof GM_setValue === 'function') GM_setValue('cnbHotkey', START_HOTKEY);
             });
         }
         // 回车键添加标签
@@ -2524,7 +2554,10 @@ ${escapeHtml(selectedContent)}</textarea>
             __CNB_SETTINGS_DIALOG = null;
         };
 
-        dialog.querySelector('.cnb-issue-btn-cancel').addEventListener('click', close);
+        const closeBtn = dialog.querySelector('.cnb-dialog-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', close);
+        }
         overlay.addEventListener('click', close);
 
         // ESC 关闭
@@ -2536,62 +2569,6 @@ ${escapeHtml(selectedContent)}</textarea>
             }
         };
         document.addEventListener('keydown', onSettingsEsc, true);
-
-        dialog.querySelector('.cnb-issue-btn-confirm').addEventListener('click', () => {
-            const repo = dialog.querySelector('#cnb-setting-repo').value.trim();
-            const token = dialog.querySelector('#cnb-setting-token').value.trim();
-            const hotkey = (dialog.querySelector('#cnb-setting-hotkey')?.value || '').trim();
-            const hotkeyEnabled = !!(dialog.querySelector('#cnb-setting-hotkey-enabled')?.checked);
-            if (repo) {
-                CONFIG.repoPath = repo;
-                if (typeof GM_setValue === 'function') GM_setValue('repoPath', repo);
-            }
-            if (token) {
-                CONFIG.accessToken = token;
-                if (typeof GM_setValue === 'function') GM_setValue('accessToken', token);
-            }
-            if (hotkey) {
-                START_HOTKEY = normalizeHotkeyString(hotkey);
-                if (typeof GM_setValue === 'function') GM_setValue('cnbHotkey', START_HOTKEY);
-            }
-            HOTKEY_ENABLED = hotkeyEnabled;
-            if (typeof GM_setValue === 'function') GM_setValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
-            // 保存剪贴板位置（允许留空，留空则隐藏剪贴板按钮）
-            try {
-                const clipIssue = (dialog.querySelector('#cnb-setting-clip-issue')?.value || '').trim();
-                if (typeof GM_setValue === 'function') GM_setValue('cnbClipboardIssue', clipIssue);
-                // 即时生效：根据是否有值来动态增删"剪贴板"按钮
-                const dock = document.querySelector('.cnb-dock');
-                if (dock) {
-                    let btn = dock.querySelector('#cnb-btn-clipboard');
-                    if (clipIssue) {
-                        if (!btn) {
-                            const btnClipboard = document.createElement('button');
-                            btnClipboard.id = 'cnb-btn-clipboard';
-                            btnClipboard.className = 'cnb-dock-btn';
-                            btnClipboard.textContent = '剪贴板';
-                            btnClipboard.addEventListener('click', (e) => {
-                                e.preventDefault();
-                                if (typeof openClipboardWindow === 'function') {
-                                    openClipboardWindow();
-                                }
-                            });
-                            dock.appendChild(btnClipboard);
-                        }
-                    } else {
-                        if (btn) btn.remove();
-                    }
-                }
-            } catch (_) {}
-            if (typeof GM_notification === 'function') {
-                GM_notification({
-                    text: '设置已保存',
-                    title: 'CNB Issue工具',
-                    timeout: 2000
-                });
-            }
-            close();
-        });
 
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
