@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.3.8
-// @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按“页面信息 + 选择的内容”的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
+// @version      1.4
+// @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -47,107 +47,135 @@
     let START_HOTKEY = 'Shift+E';
     let HOTKEY_ENABLED = false;
 
-    // 添加自定义样式
+    // 添加自定义样式 - 扁平黑白配色
     GM_addStyle(`
         .cnb-issue-floating-btn {
             position: fixed;
             top: 20px;
             right: 20px;
             z-index: 10000;
-            background: #0366d6;
-            color: white;
-            border: none;
-            border-radius: 50%;
+            background: #000;
+            color: #fff;
+            border: 2px solid #000;
+            border-radius: 0;
             width: 50px;
             height: 50px;
             cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            box-shadow: none;
             font-size: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.3s ease;
+            transition: all 0.15s ease;
         }
         .cnb-issue-floating-btn:hover {
-            background: #0256b9;
-            transform: scale(1.1);
+            background: #fff;
+            color: #000;
+            transform: none;
         }
         .cnb-issue-dialog {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 0;
+            padding: 16px;
             z-index: 10001;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            box-shadow: 4px 4px 0 #000;
             min-width: 500px;
             max-width: 90vw;
             max-height: 80vh;
             overflow: auto;
-            max-width: 450px;
         }
         .cnb-issue-dialog h3 {
-            margin: 0 0 15px 0;
-            color: #333;
+            margin: 0 0 12px 0;
+            color: #000;
+            font-size: 16px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
         .cnb-issue-dialog textarea {
             width: 100%;
             height: 300px;
-            margin: 10px 0;
+            margin: 8px 0;
             padding: 10px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            border: 2px solid #000;
+            border-radius: 0;
             resize: vertical;
             font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
             font-size: 12px;
             line-height: 1.4;
+            background: #fff;
+            color: #000;
+            box-shadow: none;
+        }
+        .cnb-issue-dialog textarea:focus {
+            outline: none;
+            border-color: #000;
         }
         .cnb-issue-dialog input {
             width: 100%;
-            margin: 10px 0;
-            padding: 8px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
+            margin: 8px 0;
+            padding: 8px 10px;
+            border: 2px solid #000;
+            border-radius: 0;
+            background: #fff;
+            color: #000;
+            box-shadow: none;
+        }
+        .cnb-issue-dialog input:focus {
+            outline: none;
+            border-color: #000;
         }
         .cnb-issue-dialog-buttons {
             display: flex;
             justify-content: flex-end;
             gap: 10px;
-            margin-top: 15px;
+            margin-top: 12px;
         }
-        /* 仅底部操作按钮生效，避免影响设置区的小按钮与“×” */
+        /* 仅底部操作按钮生效，避免影响设置区的小按钮与"×" */
         .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
             padding: 8px 16px;
-            border: none;
-            border-radius: 4px;
+            border: 2px solid #000;
+            border-radius: 0;
             cursor: pointer;
-            font-size: 14px;
-            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.1s ease;
+            background: #fff;
+            color: #000;
+            box-shadow: 2px 2px 0 #000;
+        }
+        .cnb-issue-dialog .cnb-issue-dialog-buttons > button:active {
+            transform: translate(2px, 2px);
+            box-shadow: none;
         }
         .cnb-issue-btn-confirm {
-            background: #0366d6;
-            color: white;
+            background: #000;
+            color: #fff;
         }
         .cnb-issue-btn-cancel {
-            background: #6c757d;
-            color: white;
+            background: #fff;
+            color: #000;
         }
         .cnb-issue-btn-confirm:hover {
-            background: #0256b9;
+            background: #333;
+            border-color: #000;
         }
         .cnb-issue-btn-cancel:hover {
-            background: #5a6268;
+            background: #f0f0f0;
+            border-color: #000;
         }
-        /* 新增：创建完成Issue 按钮样式（绿色） */
+        /* 创建完成Issue 按钮样式 */
         .cnb-issue-btn-done {
-            background: #28a745;
-            color: white;
+            background: #000;
+            color: #fff;
         }
         .cnb-issue-btn-done:hover {
-            background: #218838;
+            background: #333;
         }
         .cnb-issue-overlay {
             position: fixed;
@@ -155,15 +183,15 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0,0,0,0.7);
             z-index: 10000;
         }
         .cnb-issue-loading {
             display: inline-block;
             width: 20px;
             height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #0366d6;
+            border: 3px solid #e0e0e0;
+            border-top: 3px solid #000;
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-right: 10px;
@@ -174,34 +202,41 @@
             cursor: crosshair !important;
         }
         .cnb-selection-hover {
-            outline: 2px solid #0366d6 !important;
-            background-color: rgba(3, 102, 214, 0.1) !important;
+            outline: 3px solid #000 !important;
+            background-color: rgba(0, 0, 0, 0.08) !important;
         }
         .cnb-selection-selected {
-            outline: 3px solid #28a745 !important;
-            background-color: rgba(40, 167, 69, 0.15) !important;
+            outline: 4px solid #000 !important;
+            background-color: rgba(0, 0, 0, 0.12) !important;
         }
         .cnb-selection-tooltip {
             position: fixed;
             top: 10px;
             left: 50%;
             transform: translateX(-50%);
-            background: #333;
-            color: white;
-            padding: 10px 20px;
-            border-radius: 4px;
+            background: #000;
+            color: #fff;
+            padding: 5px 20px;
+            border-radius: 0;
+            border: 2px solid #000;
             z-index: 10002;
             font-size: 14px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            font-weight: 500;
+            box-shadow: 3px 3px 0 rgba(0,0,0,0.5);
         }
         .cnb-selection-tooltip button {
             margin-left: 10px;
-            padding: 4px 8px;
-            background: #28a745;
-            color: white;
-            border: none;
-            border-radius: 3px;
+            padding: 1px 12px;
+            background: #fff;
+            color: #000;
+            border: 2px solid #fff;
+            font-weight: 600;
             cursor: pointer;
+            transition: all 0.1s ease;
+        }
+        .cnb-selection-tooltip button:hover {
+            background: #000;
+            color: #fff;
         }
 
         @keyframes spin {
@@ -210,110 +245,107 @@
         }
     `);
 
-    /* 左侧贴边 Dock 控制栏（自动隐藏，悬停显示） */
+    /* 左侧贴边 Dock 控制栏（自动隐藏，鼠标移到左边缘显示） - 扁平黑白配色 */
     GM_addStyle(`
         .cnb-dock {
             position: fixed;
-            left: 0;
+            left: -200px;
             top: 40%;
-            transform: translateX(-88%);
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            padding: 8px 8px 8px 12px; /* 左侧保留把手可点区域 */
-            background: rgba(255,255,255,0.95);
-            border: 1px solid #d0d7de;
+            gap: 6px;
+            padding: 6px 6px 6px 10px;
+            background: #fff;
+            border: 2px solid #000;
             border-left: none;
-            border-radius: 0 8px 8px 0;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+            border-radius: 0 0 0 0;
+            box-shadow: 3px 3px 0 #000;
             z-index: 10002;
-            transition: transform .2s ease, opacity .2s ease;
-            opacity: 0;
+            transition: left .15s ease, opacity .15s ease;
+            opacity: 0.9;
         }
         .cnb-dock:hover,
         .cnb-dock.cnb-dock--visible {
-            transform: translateX(0);
+            left: 0;
             opacity: 1;
         }
         .cnb-dock .cnb-dock-btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 72px;
+            min-width: 64px;
             height: 32px;
             padding: 0 10px;
-            font-size: 13px;
-            color: #24292f;
-            background: #f6f8fa;
-            border: 1px solid #d0d7de;
-            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            color: #000;
+            background: #fff;
+            border: 2px solid #000;
+            border-radius: 0;
             cursor: pointer;
-            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+            transition: all 0.1s ease;
         }
         .cnb-dock .cnb-dock-btn:hover {
-            background: #eef2f6;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+            background: #000;
+            color: #fff;
         }
         .cnb-dock .cnb-dock-btn:active {
-            transform: translateY(1px);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+            transform: translate(1px, 1px);
         }
-        /* 左侧把手提示条 */
-        .cnb-dock::before {
-            content: '';
-            position: absolute;
+        .cnb-dock-trigger {
+            position: fixed;
             left: 0;
-            top: 12px;
-            width: 10px;
-            height: calc(100% - 24px);
-            background: linear-gradient(180deg, #e9ecef, #dde2e7);
-            border-right: 1px solid #d0d7de;
-            border-radius: 0 6px 6px 0;
+            top: 40%;
+            width: 20px;
+            height: 150px;
+            z-index: 10001;
         }
     `);
 
-    // 追加设置按钮样式
+    // 追加设置按钮样式 - 扁平黑白配色
     GM_addStyle(`
         .cnb-issue-settings-btn {
             position: fixed;
             z-index: 10000;
-            background: #6c757d;
-            color: white;
-            border: none;
-            border-radius: 50%;
+            background: #000;
+            color: #fff;
+            border: 2px solid #000;
+            border-radius: 0;
             width: 44px;
             height: 44px;
             cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.25);
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.5);
             font-size: 18px;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: all 0.2s ease;
+            transition: all 0.1s ease;
         }
         .cnb-issue-settings-btn:hover {
-            background: #5a6268;
-            transform: scale(1.05);
+            background: #fff;
+            color: #000;
         }
     `);
 
-    /* 强制隔离并统一控件样式，避免继承站点样式 */
+    /* 强制隔离并统一控件样式，避免继承站点样式 - 扁平黑白配色 */
     GM_addStyle(`
         .cnb-issue-dialog input.cnb-control,
         .cnb-issue-dialog textarea.cnb-control {
             box-sizing: border-box !important;
             width: 100% !important;
-            margin: 4px 0 !important;
-            padding: 4px 10px !important;
-            border: 1px solid #ccc !important;
-            border-radius: 4px !important;
+            margin: 8px 0 !important;
+            padding: 10px 12px !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
             background: #fff !important;
-            color: #222 !important;
+            color: #000 !important;
             font: normal 14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif !important;
             outline: none !important;
             appearance: none !important;
             -webkit-appearance: none !important;
             -moz-appearance: none !important;
+            transition: all 0.1s ease !important;
+            height: 36px !important;
         }
         .cnb-issue-dialog textarea.cnb-control {
             min-height: 300px !important;
@@ -322,126 +354,141 @@
             font-size: 12px !important;
             line-height: 1.4 !important;
         }
-        /* 仅底部操作按钮生效，避免影响设置区的小按钮与“×”
-           不设置背景和颜色，让各自类（confirm/cancel）决定配色与 hover */
+        .cnb-issue-dialog input.cnb-control:focus,
+        .cnb-issue-dialog textarea.cnb-control:focus {
+            border-color: #000 !important;
+        }
+        /* 仅底部操作按钮生效，避免影响设置区的小按钮与"×" */
         .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
-            padding: 8px 16px !important;
-            border: none !important;
-            border-radius: 4px !important;
+            padding: 5px 15x !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
             cursor: pointer !important;
             font-size: 14px !important;
-            transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
+            font-weight: 600 !important;
+            transition: all 0.1s ease !important;
+            background: #fff !important;
+            color: #000 !important;
+            box-shadow: 2px 2px 0 #000 !important;
         }
-        .cnb-issue-btn-confirm { background: #0366d6 !important; color: #fff !important; }
-        .cnb-issue-btn-confirm:hover { background: #0256b9 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
-        .cnb-issue-btn-cancel { background: #6c757d !important; color: #fff !important; }
-        .cnb-issue-btn-cancel:hover { background: #5a6268 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
-        /* 新增：创建完成Issue 按钮（绿色） */
-        .cnb-issue-btn-done { background: #28a745 !important; color: #fff !important; }
-        .cnb-issue-btn-done:hover { background: #218838 !important; box-shadow: 0 2px 6px rgba(0,0,0,0.15) !important; }
-        .cnb-issue-btn-confirm:active, .cnb-issue-btn-cancel:active, .cnb-issue-btn-done:active { transform: translateY(1px) scale(0.98) !important; box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important; }
+        .cnb-issue-dialog .cnb-issue-dialog-buttons > button:active {
+            transform: translate(2px, 2px) !important;
+            box-shadow: none !important;
+        }
+        .cnb-issue-btn-confirm { background: #000 !important; color: #fff !important; }
+        .cnb-issue-btn-confirm:hover { background: #333 !important; color: #fff !important; }
+        .cnb-issue-btn-cancel { background: #fff !important; color: #000 !important; }
+        .cnb-issue-btn-cancel:hover { background: #f0f0f0 !important; color: #000 !important; }
+        /* 新增：创建完成Issue 按钮（黑色） */
+        .cnb-issue-btn-done { background: #000 !important; color: #fff !important; }
+        .cnb-issue-btn-done:hover { background: #333 !important; color: #fff !important; }
 
-        /* 标签选择按钮 */
+        /* 标签选择按钮 - 扁平黑白配色 */
         #cnb-issue-tags { margin-top: 6px !important; }
         .cnb-tag-btn {
             margin: 4px !important;
-            padding: 4px 10px !important;
-            border: 1px solid #ccc !important;
-            border-radius: 16px !important;
-            background: #f8f9fa !important;
-            color: #222 !important;
+            padding: 1px 8px !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
+            background: #fff !important;
+            color: #000 !important;
             font-size: 13px !important;
+            font-weight: 500 !important;
             cursor: pointer !important;
+            transition: all 0.1s ease !important;
+        }
+        .cnb-tag-btn:hover {
+            background: #000 !important;
+            color: #fff !important;
         }
         .cnb-tag-btn.active {
-            background: #0366d6 !important;
-            border-color: #0256b9 !important;
+            background: #000 !important;
+            border-color: #000 !important;
             color: #fff !important;
         }
 
-        /* 设置页：标签胶囊与删除按钮 */
+        /* 设置页：标签胶囊与删除按钮 - 扁平黑白配色 */
         .cnb-tags-list { margin-top: 8px !important; }
         .cnb-tag-pill {
             display: inline-flex !important;
             align-items: center !important;
             gap: 6px !important;
             margin: 4px !important;
-            padding: 4px 10px !important;
-            border: 1px solid #d0d7de !important;
-            border-radius: 9999px !important;
+            padding: 1px 8px !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
             background: #fff !important;
-            color: #24292f !important;
+            color: #000 !important;
             font-size: 13px !important;
+            font-weight: 500 !important;
             line-height: 1.2 !important;
             white-space: nowrap !important;
             vertical-align: middle !important;
-            box-shadow: 0 1px 0 rgba(27,31,36,0.04) !important;
-            transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease !important;
+            box-shadow: none !important;
+            transition: all 0.1s ease !important;
             user-select: none !important;
         }
+        .cnb-tag-pill:hover {
+            background: #000 !important;
+            color: #fff !important;
+        }
         .cnb-tag-delbtn {
-            /* 与通用按钮样式彻底隔离，保持小矩形，仅比“×”略大 */
             margin-left: 4px !important;
             border: none !important;
             background: transparent !important;
             cursor: pointer !important;
-            color: #666 !important;
-            font-size: 14px !important;
-
+            color: #000 !important;
+            font-size: 18px !important;
+            font-weight: 700 !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
-
             height: 20px !important;
-            padding: 0 6px !important;
+            padding: 0 4px !important;
             line-height: 20px !important;
-            border-radius: 4px !important;
-
+            border-radius: 0 !important;
             box-sizing: border-box !important;
             white-space: nowrap !important;
-            min-width: 0 !important; /* 防止被通用按钮样式撑宽 */
+            min-width: 0 !important;
         }
-        .cnb-tag-pill:hover {
-            background: #f6f8fa !important;
-            border-color: #afb8c1 !important;
-            box-shadow: 0 1px 0 rgba(27,31,36,0.06) !important;
-        }
-        .cnb-tag-delbtn:hover {
-            color: #cf222e !important;
-            background: #ffeef0 !important;
-        }
-        .cnb-tag-delbtn:active {
-            background: #ffdce0 !important;
+        .cnb-tag-pill:hover .cnb-tag-delbtn {
+            color: #fff !important;
         }
 
-        /* 设置页：输入与按钮排列 */
+        /* 设置页：输入与按钮排列 - 扁平黑白配色 */
         .cnb-flex {
             display: flex !important;
             gap: 8px !important;
             align-items: center !important;
-            flex-wrap: nowrap !important;          /* 一行展示，禁止换行 */
+            flex-wrap: nowrap !important;
         }
-        .cnb-tag-addbtn {
+        .cnb-tag-addbtn, .cnb-tag-fetchbtn {
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
             white-space: nowrap !important;
-
-            height: 36px !important;          /* 与输入框等高 */
-            padding: 0 12px !important;
+            height: 36px !important;
+            padding: 0 16px !important;
             box-sizing: border-box !important;
-
-            border-radius: 4px !important;
-            border: none !important;
-            background: #28a745 !important;
+            border-radius: 0 !important;
+            border: 2px solid #000 !important;
+            background: #000 !important;
             color: #fff !important;
             cursor: pointer !important;
             font-size: 14px !important;
-
-            flex: 0 0 auto !important;        /* 按钮不被压缩，不换行 */
-            min-width: max-content !important; /* 宽度随文字自适应，避免“添加标/签” */
+            font-weight: 600 !important;
+            flex: 0 0 auto !important;
+            min-width: max-content !important;
+            transition: all 0.1s ease !important;
         }
-        .cnb-tag-addbtn:hover { background: #218838 !important; }
+        .cnb-tag-addbtn:hover, .cnb-tag-fetchbtn:hover {
+            background: #fff !important;
+            color: #000 !important;
+        }
+        .cnb-tag-fetchbtn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
 
         /* 让输入框可伸缩并等高 */
         .cnb-flex .cnb-control#cnb-setting-newtag {
@@ -463,12 +510,12 @@
             margin-top: 5px !important;
         }
 
-        /* 开关样式 */
+        /* 开关样式 - 扁平黑白配色 */
         .cnb-toggle-switch {
             position: relative !important;
             display: inline-block !important;
-            width: 44px !important;
-            height: 24px !important;
+            width: 48px !important;
+            height: 26px !important;
         }
 
         .cnb-toggle-switch input {
@@ -484,37 +531,39 @@
             left: 0 !important;
             right: 0 !important;
             bottom: 0 !important;
-            background-color: #ccc !important;
-            transition: .3s !important;
-            border-radius: 24px !important;
+            background-color: #e0e0e0 !important;
+            transition: .15s !important;
+            border-radius: 0 !important;
+            border: 2px solid #000 !important;
         }
 
         .cnb-toggle-slider:before {
             position: absolute !important;
             content: "" !important;
-            height: 18px !important;
-            width: 18px !important;
-            left: 3px !important;
-            bottom: 3px !important;
-            background-color: white !important;
-            transition: .3s !important;
-            border-radius: 50% !important;
+            height: 16px !important;
+            width: 16px !important;
+            left: 4px !important;
+            bottom: 4px !important;
+            background-color: #000 !important;
+            transition: .15s !important;
+            border-radius: 0 !important;
         }
 
         .cnb-toggle-switch input:checked + .cnb-toggle-slider {
-            background-color: #0366d6 !important;
+            background-color: #000 !important;
         }
 
         .cnb-toggle-switch input:checked + .cnb-toggle-slider:before {
-            transform: translateX(20px) !important;
+            transform: translateX(22px) !important;
+            background-color: #fff !important;
         }
 
-        /* 开关样式（无文字，仅图形） */
+        /* 开关样式（无文字，仅图形） - 扁平黑白配色 */
         .cnb-switch {
             position: relative !important;
             display: inline-block !important;
-            width: 42px !important;
-            height: 22px !important;
+            width: 44px !important;
+            height: 24px !important;
             vertical-align: middle !important;
         }
         .cnb-switch input {
@@ -526,29 +575,67 @@
         .cnb-switch-slider {
             position: absolute !important;
             inset: 0 !important;
-            background: #c7ccd1 !important;
-            border-radius: 9999px !important;
+            background: #e0e0e0 !important;
+            border-radius: 0 !important;
+            border: 2px solid #000 !important;
             transition: background-color .15s ease !important;
-            box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06) !important;
+            box-shadow: none !important;
             cursor: pointer !important;
         }
         .cnb-switch-slider::before {
             content: '' !important;
             position: absolute !important;
-            left: 2px !important;
-            top: 2px !important;
-            width: 18px !important;
-            height: 18px !important;
-            background: #fff !important;
-            border-radius: 50% !important;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+            left: 4px !important;
+            top: 4px !important;
+            width: 14px !important;
+            height: 14px !important;
+            background: #000 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
             transition: transform .15s ease !important;
         }
         .cnb-switch input:checked + .cnb-switch-slider {
-            background: #28a745 !important;
+            background: #000 !important;
         }
         .cnb-switch input:checked + .cnb-switch-slider::before {
             transform: translateX(20px) !important;
+            background: #fff !important;
+        }
+
+        /* 统一滚动条样式 - 扁平黑白配色 */
+        .cnb-issue-dialog, .cnb-issue-list, .cnb-clipwin, .cnb-clipwin-content, .cnb-clipwin-body {
+            scrollbar-width: thin;
+            scrollbar-color: #000 #f5f5f5;
+        }
+        .cnb-issue-dialog::-webkit-scrollbar,
+        .cnb-issue-list::-webkit-scrollbar,
+        .cnb-clipwin::-webkit-scrollbar,
+        .cnb-clipwin-content::-webkit-scrollbar,
+        .cnb-clipwin-body::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .cnb-issue-dialog::-webkit-scrollbar-track,
+        .cnb-issue-list::-webkit-scrollbar-track,
+        .cnb-clipwin::-webkit-scrollbar-track,
+        .cnb-clipwin-content::-webkit-scrollbar-track,
+        .cnb-clipwin-body::-webkit-scrollbar-track {
+            background: #f5f5f5;
+        }
+        .cnb-issue-dialog::-webkit-scrollbar-thumb,
+        .cnb-issue-list::-webkit-scrollbar-thumb,
+        .cnb-clipwin::-webkit-scrollbar-thumb,
+        .cnb-clipwin-content::-webkit-scrollbar-thumb,
+        .cnb-clipwin-body::-webkit-scrollbar-thumb {
+            background: #000;
+            border-radius: 0;
+        }
+        .cnb-issue-dialog::-webkit-scrollbar-thumb:hover,
+        .cnb-issue-list::-webkit-scrollbar-thumb:hover,
+        .cnb-clipwin::-webkit-scrollbar-thumb:hover,
+        .cnb-clipwin-content::-webkit-scrollbar-thumb:hover,
+        .cnb-clipwin-body::-webkit-scrollbar-thumb:hover {
+            background: #333;
         }
     `);
 
@@ -811,7 +898,6 @@
     function createFloatingButton() {
         const dock = document.createElement('div');
         dock.className = 'cnb-dock';
-        dock.title = '悬停展开，移开隐藏';
 
         const btnSelect = document.createElement('button');
         btnSelect.className = 'cnb-dock-btn';
@@ -840,7 +926,7 @@
         });
         dock.appendChild(btnList);
 
-        // 剪贴板（根据设置的“剪贴板位置”是否为空来决定是否显示）
+        // 剪贴板（根据设置的"剪贴板位置"是否为空来决定是否显示）
         let __cnbClipCfg = '';
         try { if (typeof GM_getValue === 'function') { const v = GM_getValue('cnbClipboardIssue', ''); __cnbClipCfg = String(v || '').trim(); } } catch (_) {}
         if (__cnbClipCfg) {
@@ -858,6 +944,28 @@
         }
 
         document.body.appendChild(dock);
+
+        // 创建左边缘触发区域
+        const trigger = document.createElement('div');
+        trigger.className = 'cnb-dock-trigger';
+        document.body.appendChild(trigger);
+
+        // 等待dock完全渲染后，设置触发区域的尺寸
+        setTimeout(() => {
+            const dockRect = dock.getBoundingClientRect();
+            trigger.style.top = dockRect.top + 'px';
+            trigger.style.height = dockRect.height + 'px';
+        }, 0);
+
+        // 鼠标移到触发区域时显示dock
+        trigger.addEventListener('mouseenter', () => {
+            dock.classList.add('cnb-dock--visible');
+        });
+
+        // 鼠标离开dock时隐藏
+        dock.addEventListener('mouseleave', () => {
+            dock.classList.remove('cnb-dock--visible');
+        });
 
 
 
@@ -1373,16 +1481,37 @@
         }
     }
 
-    // 清理Markdown内容
+    // 清理Markdown内容（用于显示）
     function cleanMarkdownContent(markdown) {
         return markdown
             // 删除表情图片（以 ![:grimacing:] 格式）
             .replace(/!\[:[^\]]+\]\([^)]+\)/g, '')
             // 将复杂图片链接格式转换为纯图片格式
             .replace(/\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]+\)/g, '![$1]($2)')
-            .replace(/\n{3,}/g, '\n\n') // 多个空行合并为两个
+            // 移除每行开头和结尾的空白
+            .split('\n')
+            .map(line => line.trim())
+            // 过滤空行，使显示更紧凑
+            .filter(line => line.length > 0)
+            .join('\n')
+            // 去除首尾空白
+            .replace(/^\s+|\s+$/g, '');
+    }
 
-            .replace(/^\s+|\s+$/g, ''); // 去除首尾空白
+    // 清理Markdown内容（用于复制，更激进的换行处理）
+    function cleanMarkdownContentForCopy(markdown) {
+        return markdown
+            // 删除表情图片（以 ![:grimacing:] 格式）
+            .replace(/!\[:[^\]]+\]\([^)]+\)/g, '')
+            // 将复杂图片链接格式转换为纯图片格式
+            .replace(/\[!\[([^\]]*)\]\(([^)]+)\)[^\]]*\]\([^)]+\)/g, '![$1]($2)')
+            // 先移除首尾空白
+            .replace(/^\s+|\s+$/g, '')
+            // 按行分割，trim每行，过滤空行
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0)
+            .join('\n');
     }
 
     // 轻量 Markdown 转 HTML（基础语法）
@@ -1431,12 +1560,14 @@
             const items = block.trim().split(/\n/).map(l => l.replace(/^\s*\d+\.\s+/, '').trim());
             return '<ol>' + items.map(i=>`<li>${i}</li>`).join('') + '</ol>';
         });
-        // 段落：双换行分段，避免已是块级元素再次包裹
-        const blocks = md.split(/\n{2,}/).map(seg=>{
-            if (/^\s*<(h\d|ul|ol|li|pre|blockquote|hr)/i.test(seg)) return seg;
-            return '<p>' + seg.replace(/\n/g, '<br>') + '</p>';
-        });
-        let html = blocks.join('\n');
+        // 段落：使用换行分段，避免已是块级元素再次包裹
+        const blocks = md.split('\n')
+            .filter(seg => seg.trim().length > 0) // 移除空行
+            .map(seg=>{
+                if (/^\s*<(h\d|ul|ol|li|pre|blockquote|hr)/i.test(seg)) return seg;
+                return '<p>' + seg + '</p>';
+            });
+        let html = blocks.join('');
         // 还原占位
         html = html.replace(/\u0000(INLINE|BLOCK)(\d+)\u0000/g, (_, type, i) => placeholders[Number(i)] || '');
         return html;
@@ -1565,7 +1696,42 @@
                 del.textContent = '×';
                 del.title = '删除';
                 del.className = 'cnb-tag-delbtn';
-                del.addEventListener('click', () => {
+                del.addEventListener('click', async () => {
+                    const repo = dialog.querySelector('#cnb-setting-repo').value.trim();
+                    const token = dialog.querySelector('#cnb-setting-token').value.trim();
+
+                    // 如果配置了仓库路径和访问令牌，则调用 API 删除标签
+                    if (repo && token) {
+                        const deleteLabelUrl = `${CONFIG.apiBase}/${repo}/-/labels/${encodeURIComponent(tag)}`;
+
+                        try {
+                            await new Promise((resolve, reject) => {
+                                GM_xmlhttpRequest({
+                                    method: 'DELETE',
+                                    url: deleteLabelUrl,
+                                    headers: {
+                                        'Accept': 'application/vnd.cnb.api+json',
+                                        'Authorization': token
+                                    },
+                                    onload: function(response) {
+                                        if (response.status >= 200 && response.status < 300) {
+                                            resolve();
+                                        } else {
+                                            reject(new Error(`HTTP ${response.status}`));
+                                        }
+                                    },
+                                    onerror: function() {
+                                        reject(new Error('网络错误'));
+                                    }
+                                });
+                            });
+                        } catch (error) {
+                            // API 删除失败，只从本地删除
+                            console.warn('从仓库删除标签失败:', error);
+                        }
+                    }
+
+                    // 从本地删除
                     SAVED_TAGS.splice(idx, 1);
                     if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
                     renderTagsList();
@@ -1578,20 +1744,166 @@
 
         renderTagsList();
 
-        addTagBtn.addEventListener('click', () => {
+        addTagBtn.addEventListener('click', async () => {
             const t = (newTagInput.value || '').trim();
             if (!t) return;
-            if (!Array.isArray(SAVED_TAGS)) SAVED_TAGS = [];
-            if (!SAVED_TAGS.includes(t)) {
-                SAVED_TAGS.push(t);
-                if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
-                renderTagsList();
-                newTagInput.value = '';
+
+            const repo = dialog.querySelector('#cnb-setting-repo').value.trim();
+            const token = dialog.querySelector('#cnb-setting-token').value.trim();
+
+            if (!repo || !token) {
                 if (typeof GM_notification === 'function') {
-                    GM_notification({ text: '标签已添加', title: 'CNB Issue工具', timeout: 1500 });
+                    GM_notification({ text: '请先配置仓库路径和访问令牌', title: 'CNB Issue工具', timeout: 3000 });
+                }
+                return;
+            }
+
+            // 创建仓库标签
+            const createLabelUrl = `${CONFIG.apiBase}/${repo}/-/labels`;
+
+            try {
+                await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'POST',
+                        url: createLabelUrl,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/vnd.cnb.api+json',
+                            'Authorization': token
+                        },
+                        data: JSON.stringify({ name: t }),
+                        responseType: 'json',
+                        onload: function(response) {
+                            if (response.status >= 200 && response.status < 300) {
+                                resolve();
+                            } else {
+                                let errorMsg = `HTTP ${response.status}`;
+                                try {
+                                    const err = typeof response.response === 'string'
+                                        ? JSON.parse(response.response) : response.response;
+                                    if (err?.message) errorMsg = err.message;
+                                } catch (e) {}
+                                reject(new Error(errorMsg));
+                            }
+                        },
+                        onerror: function() {
+                            reject(new Error('网络错误'));
+                        }
+                    });
+                });
+
+                // 添加到本地列表
+                if (!Array.isArray(SAVED_TAGS)) SAVED_TAGS = [];
+                if (!SAVED_TAGS.includes(t)) {
+                    SAVED_TAGS.push(t);
+                    if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
+                    renderTagsList();
+                    newTagInput.value = '';
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({ text: '标签已添加', title: 'CNB Issue工具', timeout: 1500 });
+                    }
+                }
+            } catch (error) {
+                if (typeof GM_notification === 'function') {
+                    GM_notification({ text: `添加标签失败: ${error.message}`, title: 'CNB Issue工具', timeout: 3000 });
                 }
             }
         });
+
+        // 自动获取标签（打开设置对话框时自动调用）
+        async function fetchRepoTags(repo, token) {
+            if (!repo || !token) {
+                return;
+            }
+
+            // 分页获取所有标签
+            let allLabels = [];
+            let page = 1;
+            const pageSize = 50;
+            let hasMore = true;
+
+            async function fetchLabelsPage() {
+                return new Promise((resolve, reject) => {
+                    const labelsUrl = `${CONFIG.apiBase}/${repo}/-/labels?page=${page}&page_size=${pageSize}`;
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: labelsUrl,
+                        headers: {
+                            'Accept': 'application/vnd.cnb.api+json',
+                            'Authorization': token
+                        },
+                        responseType: 'json',
+                        onload: function(response) {
+                            if (response.status === 200) {
+                                let data = null;
+                                try {
+                                    data = typeof response.response === 'object' && response.response !== null
+                                        ? response.response
+                                        : JSON.parse(response.responseText || '{}');
+                                } catch (e) {
+                                    data = null;
+                                }
+
+                                const labels = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+                                allLabels = allLabels.concat(labels);
+
+                                // 检查是否还有更多数据
+                                const total = data?.total_count ?? data?.total ?? data?.totalCount ?? 0;
+                                hasMore = labels.length === pageSize && allLabels.length < total;
+                                resolve(labels);
+                            } else {
+                                let errorMsg = `HTTP ${response.status}`;
+                                try {
+                                    const err = typeof response.response === 'string'
+                                        ? JSON.parse(response.response) : response.response;
+                                    if (err?.message) errorMsg = err.message;
+                                } catch (e) {}
+                                reject(new Error(errorMsg));
+                            }
+                        },
+                        onerror: function() {
+                            reject(new Error('网络错误'));
+                        }
+                    });
+                });
+            }
+
+            try {
+                while (hasMore) {
+                    await fetchLabelsPage();
+                    page++;
+                }
+
+                const labelNames = allLabels.map(l => l.name || l.title || l).filter(Boolean);
+
+                if (labelNames.length > 0) {
+                    SAVED_TAGS = [];
+                    labelNames.forEach(name => {
+                        if (!SAVED_TAGS.includes(name)) {
+                            SAVED_TAGS.push(name);
+                        }
+                    });
+                    if (typeof GM_setValue === 'function') GM_setValue('cnbTags', SAVED_TAGS);
+                    renderTagsList();
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({ text: `已获取 ${labelNames.length} 个标签`, title: 'CNB Issue工具', timeout: 2000 });
+                    }
+                } else {
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({ text: '仓库暂无标签', title: 'CNB Issue工具', timeout: 2000 });
+                    }
+                }
+            } catch (error) {
+                // 静默失败，不影响对话框打开
+                console.warn('获取标签失败:', error);
+            }
+        }
+
+        // 打开对话框时自动获取标签
+        const repo = dialog.querySelector('#cnb-setting-repo').value.trim();
+        const token = dialog.querySelector('#cnb-setting-token').value.trim();
+        fetchRepoTags(repo, token);
+
 
         const close = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -1602,6 +1914,17 @@
 
         dialog.querySelector('.cnb-issue-btn-cancel').addEventListener('click', close);
         overlay.addEventListener('click', close);
+
+        // ESC 关闭
+        const onSettingsEsc = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+                document.removeEventListener('keydown', onSettingsEsc, true);
+            }
+        };
+        document.addEventListener('keydown', onSettingsEsc, true);
+
         dialog.querySelector('.cnb-issue-btn-confirm').addEventListener('click', () => {
             const repo = dialog.querySelector('#cnb-setting-repo').value.trim();
             const token = dialog.querySelector('#cnb-setting-token').value.trim();
@@ -1625,7 +1948,7 @@
             try {
                 const clipIssue = (dialog.querySelector('#cnb-setting-clip-issue')?.value || '').trim();
                 if (typeof GM_setValue === 'function') GM_setValue('cnbClipboardIssue', clipIssue);
-                // 即时生效：根据是否有值来动态增删“剪贴板”按钮
+                // 即时生效：根据是否有值来动态增删"剪贴板"按钮
                 const dock = document.querySelector('.cnb-dock');
                 if (dock) {
                     let btn = dock.querySelector('#cnb-btn-clipboard');
@@ -1660,6 +1983,10 @@
 
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
+
+        console.log('[CNB Issue] overlay added:', document.body.contains(overlay));
+        console.log('[CNB Issue] dialog added:', document.body.contains(dialog));
+        console.log('[CNB Issue] dialog.className:', dialog.className);
     }
 
     // Issue 列表弹窗
@@ -1677,6 +2004,15 @@
             return;
         }
 
+        // 如果已存在旧窗口，先清理
+        try { if (__CNB_CLIP_DIALOG) __CNB_CLIP_DIALOG.remove(); } catch (_) {}
+        // 移除所有旧的标签容器
+        try {
+            const oldTabsList = document.querySelectorAll('.cnb-clipwin-tabs');
+            oldTabsList.forEach(tab => tab.remove());
+        } catch (_) {}
+        __CNB_CLIP_DIALOG = null;
+
         const overlay = document.createElement('div');
         overlay.className = 'cnb-issue-overlay';
         __CNB_ISSUE_OVERLAY = overlay;
@@ -1686,54 +2022,54 @@
         __CNB_ISSUE_DIALOG = dialog;
 
         dialog.innerHTML = `
-            <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:12px; top:12px; border:none; background:transparent; color:#666; font-size:18px; line-height:1; cursor:pointer;">×</button>
+            <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:10px; top:10px; border:none; background:transparent; color:#000; font-size:20px; line-height:1; cursor:pointer; font-weight:700;">×</button>
             <h3>Issue 列表</h3>
-            <div class="cnb-hint" style="margin-bottom:8px;">显示 state=closed 的最近 100 条</div>
-            <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:8px 0;"></div>
-            <div id="cnb-issue-list" style="height:60vh; overflow:auto; border:1px solid #e5e7eb; border-radius:6px;"></div>
+            <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:6px 0;"></div>
+            <div id="cnb-issue-list" style="height:55vh; overflow:auto; border:2px solid #000; border-radius:0;"></div>
+            <div id="cnb-issue-pagination" style="margin-top:10px;display:flex;justify-content:center;gap:10px;"></div>
         `;
 
         // 固定对话框尺寸，防止点击筛选按钮时窗口抖动
         dialog.style.width = '840px';
         dialog.style.maxWidth = '840px';
 
-        // 补充：筛选按钮按压态样式
+        // 补充：筛选按钮按压态样式 - 扁平黑白配色
         GM_addStyle(`
             .cnb-issue-filter-btn.pressed {
-                transform: translateY(1px) scale(0.98);
-                box-shadow: 0 1px 0 rgba(27,31,36,0.08);
+                transform: translate(1px, 1px);
+                box-shadow: none;
             }
             .cnb-issue-filter-btn {
-                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease;
+                transition: all 0.1s ease;
             }
         `);
 
         const listEl = dialog.querySelector('#cnb-issue-list');
         const closeBtn = dialog.querySelector('.cnb-dialog-close');
 
-        // 行内标签（Issue 列表中的 labels）胶囊样式
+        // 行内标签（Issue 列表中的 labels）胶囊样式 - 扁平黑白配色
         GM_addStyle(`
             .cnb-issue-chip {
                 display: inline-flex;
                 align-items: center;
-                gap: 6px;
-                padding: 2px 8px;
-                border: 1px solid #d0d7de;
-                border-radius: 9999px;
+                gap: 4px;
+                padding: 3px 8px;
+                border: 2px solid #000;
+                border-radius: 0;
                 background: #fff;
-                color: #24292f;
-                font-size: 12px;
-                line-height: 1.2;
+                color: #000;
+                font-size: 11px;
+                font-weight: 500;
+                line-height: 1.1;
                 white-space: nowrap;
                 vertical-align: middle;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.04);
-                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease;
+                box-shadow: none;
+                transition: all 0.1s ease;
                 user-select: none;
             }
             .cnb-issue-chip:hover {
-                background: #f6f8fa;
-                border-color: #afb8c1;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.06);
+                background: #000;
+                color: #fff;
             }
         `);
         const close = () => {
@@ -1756,293 +2092,360 @@
         document.addEventListener('keydown', onEsc, true);
 
         // 初始加载中
-        listEl.innerHTML = `<div style="padding:12px;color:#666;">加载中...</div>`;
+        listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载中...</div>`;
 
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=1&page_size=100&state=closed`;
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: url.replace(/&/g, '&'),
-            headers: {
-                'accept': 'application/json',
-                'Authorization': `${CONFIG.accessToken}`
-            },
-            responseType: 'json',
-            onload: function(res) {
-                try {
-                    const data = typeof res.response === 'object' && res.response !== null
-                        ? res.response
-                        : JSON.parse(res.responseText || '[]');
-                    const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
-                    if (!items.length) {
-                        listEl.innerHTML = `<div style="padding:12px;color:#666;">暂无数据</div>`;
-                        return;
+        // 分页相关变量
+        let currentPage = 1;
+        const pageSize = 50;
+        let allItems = [];
+        let currentFilterLabel = null;
+
+        function loadIssues(page) {
+            listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载中...</div>`;
+
+            const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=${page}&page_size=${pageSize}&state=closed`;
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url.replace(/&/g, '&'),
+                headers: {
+                    'accept': 'application/json',
+                    'Authorization': `${CONFIG.accessToken}`
+                },
+                responseType: 'json',
+                onload: function(res) {
+                    try {
+                        const data = typeof res.response === 'object' && res.response !== null
+                            ? res.response
+                            : JSON.parse(res.responseText || '[]');
+                        const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
+
+                        if (!items.length) {
+                            listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">暂无数据</div>`;
+                            return;
+                        }
+
+                        allItems = Array.isArray(items) ? items : [];
+
+                        // 根据返回的数量判断是否有下一页
+                        // 如果返回的数量等于 pageSize，说明可能还有下一页
+                        // 否则就是最后一页
+                        const hasMore = items.length === pageSize;
+
+                        currentPage = page;
+                        renderList(currentFilterLabel);
+                        renderPagination(hasMore);
+                    } catch (e) {
+                        listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载失败</div>`;
                     }
-                    // 渲染 + 筛选
-                    const allItems = Array.isArray(items) ? items : [];
-                    const filterEl = dialog.querySelector('#cnb-issue-filter');
-                    // 行内样式强制为 flex 并设置 5px 间距，避免被站点覆盖
-                    if (filterEl) {
-                        const s = filterEl.style;
-                        s.setProperty('display', 'flex', 'important');
-                        s.setProperty('flex-wrap', 'wrap', 'important');
-                        s.setProperty('gap', '5px', 'important');
-                    }
+                },
+                onerror: function() {
+                    listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">网络请求失败</div>`;
+                }
+            });
+        }
 
-                    function render(filterLabel) {
-                        const frag = document.createDocumentFragment();
-                        const filtered = !filterLabel ? allItems : allItems.filter(it => {
-                            const names = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
-                            return names.includes(filterLabel);
-                        });
+        function renderList(filterLabel) {
+            const filterEl = dialog.querySelector('#cnb-issue-filter');
+            // 行内样式强制为 flex 并设置 4px 间距，避免被站点覆盖
+            if (filterEl) {
+                const s = filterEl.style;
+                s.setProperty('display', 'flex', 'important');
+                s.setProperty('flex-wrap', 'wrap', 'important');
+                s.setProperty('gap', '4px', 'important');
+            }
 
-                        filtered.forEach(it => {
-                            const number = it.number ?? it.id ?? it.iid ?? '';
-                            const title = it.title ?? '';
-                            const createdAt = it.created_at ?? '';
-                            const labelNames = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
+            const frag = document.createDocumentFragment();
+            const filtered = !filterLabel ? allItems : allItems.filter(it => {
+                const names = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
+                return names.includes(filterLabel);
+            });
 
-                            const row = document.createElement('div');
-                            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-bottom:1px solid #eef2f6;';
+            filtered.forEach(it => {
+                const number = it.number ?? it.id ?? it.iid ?? '';
+                const title = it.title ?? '';
+                const createdAt = it.created_at ?? '';
+                const labelNames = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
 
-                            const left = document.createElement('div');
-                            left.style.cssText = 'min-width:0;flex:1;font-size:14px;color:#24292f;display:flex;gap:5px !important;align-items:center;';
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:2px solid #000;';
 
-                            const prefix = document.createElement('span');
-                            prefix.textContent = `#${number}`;
+                const left = document.createElement('div');
+                left.style.cssText = 'min-width:0;flex:1;font-size:13px;color:#000;display:flex;gap:6px !important;align-items:center;';
 
-                            const a = document.createElement('a');
-                            a.href = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${number}`;
-                            a.target = '_blank';
-                            a.rel = 'noopener noreferrer';
-                            const fullTitle = String(title || '');
-                            const truncated = fullTitle.length > 40 ? fullTitle.slice(0, 40) + '…' : fullTitle;
-                            a.textContent = truncated;
-                            a.title = fullTitle;
-                            a.style.cssText = 'color:#0969da;text-decoration:none;word-break:break-all;';
-                            a.addEventListener('mouseover', () => a.style.textDecoration = 'underline');
-                            a.addEventListener('mouseout', () => a.style.textDecoration = 'none');
+                const prefix = document.createElement('span');
+                prefix.textContent = `#${number}`;
+                prefix.style.fontWeight = '700';
 
-                            left.appendChild(prefix);
-                            left.appendChild(a);
+                const a = document.createElement('a');
+                a.href = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${number}`;
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                const fullTitle = String(title || '');
+                const truncated = fullTitle.length > 40 ? fullTitle.slice(0, 40) + '…' : fullTitle;
+                a.textContent = truncated;
+                a.title = fullTitle;
+                a.style.cssText = 'color:#000;text-decoration:none;word-break:break-all;font-weight:500;';
+                a.addEventListener('mouseover', () => a.style.textDecoration = 'underline');
+                a.addEventListener('mouseout', () => a.style.textDecoration = 'none');
 
-                            // 复制按钮：关闭 Issue(完成) 并复制 title + body(清理为Markdown) 到剪贴板
-                            const btnCopy = document.createElement('button');
-                            btnCopy.type = 'button';
-                            btnCopy.textContent = '📋';
-                            btnCopy.title = '复制到剪贴板';
-                            btnCopy.style.cssText = 'margin-left:6px;display:inline-flex;align-items:center;justify-content:center;padding:0;border:none;background:transparent;color:#57606a;font-size:12px;cursor:pointer;line-height:1;';
-                            btnCopy.addEventListener('mouseover', () => btnCopy.style.opacity = '0.75');
-                            btnCopy.addEventListener('mouseout', () => btnCopy.style.opacity = '1');
-                            btnCopy.addEventListener('click', () => {
-                                if (btnCopy.disabled) return;
-                                btnCopy.disabled = true;
-                                const oldText = btnCopy.textContent;
-                                btnCopy.textContent = '…';
-                                const urlPatch = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${number}`;
-                                GM_xmlhttpRequest({
-                                    method: 'PATCH',
-                                    url: urlPatch,
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'Authorization': `${CONFIG.accessToken}`,
-                                        'Accept': 'application/json'
-                                    },
-                                    data: JSON.stringify({ state: 'closed', state_reason: 'completed' }),
-                                    responseType: 'json',
-                                    onload: function(res) {
-                                        try {
-                                            if (res.status >= 200 && res.status < 300) {
-                                                let obj = null;
-                                                try {
-                                                    obj = (typeof res.response === 'object' && res.response !== null)
-                                                        ? res.response
-                                                        : JSON.parse(res.responseText || '{}');
-                                                } catch(_) {}
-                                                const t = (obj && obj.title) ? obj.title : title;
-                                                const b = (obj && typeof obj.body === 'string') ? obj.body : '';
-                                                const md = cleanMarkdownContent(String(b || ''));
-                                                if (typeof GM_setClipboard === 'function') {
-                                                    GM_setClipboard(`${t}
+                left.appendChild(prefix);
+                left.appendChild(a);
+
+                // 复制按钮：关闭 Issue(完成) 并复制 title + body(清理为Markdown) 到剪贴板
+                const btnCopy = document.createElement('button');
+                btnCopy.type = 'button';
+                btnCopy.textContent = '📋';
+                btnCopy.title = '复制到剪贴板';
+                btnCopy.style.cssText = 'margin-left:6px;display:inline-flex;align-items:center;justify-content:center;padding:3px 6px;border:2px solid #000;background:#fff;color:#000;font-size:11px;font-weight:600;cursor:pointer;line-height:1;transition:all 0.1s ease;';
+                btnCopy.addEventListener('mouseover', () => { btnCopy.style.background = '#000'; btnCopy.style.color = '#fff'; });
+                btnCopy.addEventListener('mouseout', () => { btnCopy.style.background = '#fff'; btnCopy.style.color = '#000'; });
+                btnCopy.addEventListener('click', () => {
+                    if (btnCopy.disabled) return;
+                    btnCopy.disabled = true;
+                    const oldText = btnCopy.textContent;
+                    btnCopy.textContent = '…';
+                    const urlPatch = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${number}`;
+                    GM_xmlhttpRequest({
+                        method: 'PATCH',
+                        url: urlPatch,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `${CONFIG.accessToken}`,
+                            'Accept': 'application/json'
+                        },
+                        data: JSON.stringify({ state: 'closed', state_reason: 'completed' }),
+                        responseType: 'json',
+                        onload: function(res) {
+                            try {
+                                if (res.status >= 200 && res.status < 300) {
+                                    let obj = null;
+                                    try {
+                                        obj = (typeof res.response === 'object' && res.response !== null)
+                                            ? res.response
+                                            : JSON.parse(res.responseText || '{}');
+                                    } catch(_) {}
+                                    const t = (obj && obj.title) ? obj.title : title;
+                                    const b = (obj && typeof obj.body === 'string') ? obj.body : '';
+                                    const md = cleanMarkdownContent(String(b || ''));
+                                    if (typeof GM_setClipboard === 'function') {
+                                        GM_setClipboard(`${t}
 
 ${md}`, 'text');
-                                                }
-                                                if (typeof GM_notification === 'function') {
-                                                    GM_notification({ text: '已关闭并复制到剪贴板', title: 'CNB Issue工具', timeout: 3000 });
-                                                }
-                                            } else {
-                                                if (typeof GM_notification === 'function') {
-                                                    GM_notification({ text: '操作失败: HTTP ' + res.status, title: 'CNB Issue工具', timeout: 5000 });
-                                                }
-                                            }
-                                        } finally {
-                                            btnCopy.disabled = false;
-                                            btnCopy.textContent = oldText;
-                                        }
-                                    },
-                                    onerror: function() {
-                                        if (typeof GM_notification === 'function') {
-                                            GM_notification({ text: '网络请求失败', title: 'CNB Issue工具', timeout: 5000 });
-                                        }
-                                        btnCopy.disabled = false;
-                                        btnCopy.textContent = oldText;
                                     }
-                                });
-                            });
-                            left.appendChild(btnCopy);
-
-                            const right = document.createElement('div');
-                            right.style.cssText = 'flex:0 0 auto;color:#57606a;font-size:12px;text-align:right;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;';
-
-                            // 标签胶囊容器
-                            const labelsWrap = document.createElement('div');
-                            labelsWrap.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
-
-                            const labelObjs = Array.isArray(it.labels) ? it.labels : [];
-                            labelObjs.forEach(l => {
-                                const chip = document.createElement('span');
-                                chip.className = 'cnb-issue-chip';
-                                chip.textContent = l?.name ?? '';
-                                // 若有颜色，应用为背景，并适当设置边框与前景色
-                                const color = (l && typeof l.color === 'string' && l.color) ? l.color : '';
-                                if (color) {
-                                    chip.style.background = color;
-                                    // 根据背景亮度调整文字与边框（简单阈值）
-                                    try {
-                                        const hex = color.replace('#','');
-                                        const r = parseInt(hex.substring(0,2),16);
-                                        const g = parseInt(hex.substring(2,4),16);
-                                        const b = parseInt(hex.substring(4,6),16);
-                                        const lum = 0.2126*r + 0.7152*g + 0.0722*b;
-                                        chip.style.color = lum < 140 ? '#fff' : '#24292f';
-                                        chip.style.borderColor = lum < 140 ? 'rgba(255,255,255,0.35)' : '#d0d7de';
-                                    } catch(_) {}
+                                    if (typeof GM_notification === 'function') {
+                                        GM_notification({ text: '已关闭并复制到剪贴板', title: 'CNB Issue工具', timeout: 3000 });
+                                    }
+                                } else {
+                                    if (typeof GM_notification === 'function') {
+                                        GM_notification({ text: '操作失败: HTTP ' + res.status, title: 'CNB Issue工具', timeout: 5000 });
+                                    }
                                 }
-                                labelsWrap.appendChild(chip);
-                            });
+                            } finally {
+                                btnCopy.disabled = false;
+                                btnCopy.textContent = oldText;
+                            }
+                        },
+                        onerror: function() {
+                            if (typeof GM_notification === 'function') {
+                                GM_notification({ text: '网络请求失败', title: 'CNB Issue工具', timeout: 5000 });
+                            }
+                            btnCopy.disabled = false;
+                            btnCopy.textContent = oldText;
+                        }
+                    });
+                });
+                left.appendChild(btnCopy);
 
-                            const dateSpan = document.createElement('span');
-                            dateSpan.textContent = createdAt;
-                            dateSpan.style.cssText = 'color:#57606a;';
+                const right = document.createElement('div');
+                right.style.cssText = 'flex:0 0 auto;color:#57606a;font-size:11px;text-align:right;display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end;';
 
-                            right.appendChild(labelsWrap);
-                            right.appendChild(dateSpan);
+                // 标签胶囊容器
+                const labelsWrap = document.createElement('div');
+                labelsWrap.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;';
 
-                            row.appendChild(left);
-                            row.appendChild(right);
-                            frag.appendChild(row);
-                        });
-
-                        listEl.innerHTML = '';
-                        listEl.appendChild(frag);
+                const labelObjs = Array.isArray(it.labels) ? it.labels : [];
+                labelObjs.forEach(l => {
+                    const chip = document.createElement('span');
+                    chip.className = 'cnb-issue-chip';
+                    chip.textContent = l?.name ?? '';
+                    // 若有颜色，应用为背景，并适当设置边框与前景色
+                    const color = (l && typeof l.color === 'string' && l.color) ? l.color : '';
+                    if (color) {
+                        chip.style.background = color;
+                        // 根据背景亮度调整文字与边框（简单阈值）
+                        try {
+                            const hex = color.replace('#','');
+                            const r = parseInt(hex.substring(0,2),16);
+                            const g = parseInt(hex.substring(2,4),16);
+                            const b = parseInt(hex.substring(4,6),16);
+                            const lum = 0.2126*r + 0.7152*g + 0.0722*b;
+                            chip.style.color = lum < 140 ? '#fff' : '#24292f';
+                            chip.style.borderColor = lum < 140 ? 'rgba(255,255,255,0.35)' : '#d0d7de';
+                        } catch(_) {}
                     }
+                    labelsWrap.appendChild(chip);
+                });
 
-                    // 渲染筛选按钮
-                    if (filterEl) {
-                        filterEl.innerHTML = '';
-                        const allBtn = document.createElement('button');
-                        allBtn.className = 'cnb-issue-filter-btn active';
-                        allBtn.textContent = '全部';
-                        applyFilterButtonStyles(allBtn);
-                        applyFilterButtonActive(allBtn);
-                        addPressEffect(allBtn);
-                        allBtn.addEventListener('click', () => {
-                            setActive(allBtn);
-                            render(null);
-                        });
-                        filterEl.appendChild(allBtn);
+                const dateSpan = document.createElement('span');
+                dateSpan.textContent = createdAt;
+                dateSpan.style.cssText = 'color:#57606a;';
 
-                        const tagList = Array.isArray(SAVED_TAGS) ? SAVED_TAGS : [];
-                        tagList.forEach(tag => {
-                            const b = document.createElement('button');
-                            b.className = 'cnb-issue-filter-btn';
-                            b.textContent = tag;
-                            applyFilterButtonStyles(b);
-                            addPressEffect(b);
-                            b.addEventListener('click', () => {
-                                setActive(b);
-                                render(tag);
-                            });
-                            filterEl.appendChild(b);
-                        });
+                right.appendChild(labelsWrap);
+                right.appendChild(dateSpan);
 
-                        function setActive(btn) {
-                            const buttons = filterEl.querySelectorAll('button');
-                            buttons.forEach(x => {
-                                x.classList.remove('active');
-                                applyFilterButtonDefault(x);
-                            });
-                            btn.classList.add('active');
-                            applyFilterButtonActive(btn);
-                        }
+                row.appendChild(left);
+                row.appendChild(right);
+                frag.appendChild(row);
+            });
 
-                        // 行内样式（带 !important）确保胶囊风格不被站点覆盖
-                        function applyFilterButtonStyles(btn) {
-                            const s = btn.style;
-                            s.setProperty('display', 'inline-flex', 'important');
-                            s.setProperty('align-items', 'center', 'important');
-                            s.setProperty('gap', '6px', 'important');
-                            s.setProperty('padding', '4px 10px', 'important');
-                            s.setProperty('border', '1px solid #d0d7de', 'important');
-                            s.setProperty('border-radius', '9999px', 'important');
-                            s.setProperty('background', '#fff', 'important');
-                            s.setProperty('color', '#24292f', 'important');
-                            s.setProperty('font-size', '13px', 'important');
-                            s.setProperty('line-height', '1.2', 'important');
-                            s.setProperty('white-space', 'nowrap', 'important');
-                            s.setProperty('vertical-align', 'middle', 'important');
-                            s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
-                            s.setProperty('transition', 'background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease', 'important');
-                            s.setProperty('cursor', 'pointer', 'important');
-                            s.setProperty('user-select', 'none', 'important');
-                            // 关键：移除按钮自身外边距，确保由容器 gap 控制间距
-                            s.setProperty('margin', '0', 'important');
-                        }
-                        function applyFilterButtonDefault(btn) {
-                            const s = btn.style;
-                            s.setProperty('background', '#fff', 'important');
-                            s.setProperty('border-color', '#d0d7de', 'important');
-                            s.setProperty('color', '#24292f', 'important');
-                            s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
-                        }
-                        function applyFilterButtonActive(btn) {
-                            const s = btn.style;
-                            s.setProperty('background', '#0366d6', 'important');
-                            s.setProperty('border-color', '#0256b9', 'important');
-                            s.setProperty('color', '#fff', 'important');
-                            s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.05)', 'important');
-                        }
+            listEl.innerHTML = '';
+            listEl.appendChild(frag);
+        }
 
-                        // 为筛选按钮添加按压反馈
-                        function addPressEffect(btn) {
-                            btn.addEventListener('mousedown', () => btn.classList.add('pressed'));
-                            btn.addEventListener('mouseup', () => btn.classList.remove('pressed'));
-                            btn.addEventListener('mouseleave', () => btn.classList.remove('pressed'));
-                            btn.addEventListener('touchstart', () => btn.classList.add('pressed'), { passive: true });
-                            btn.addEventListener('touchend', () => btn.classList.remove('pressed'));
-                            btn.addEventListener('touchcancel', () => btn.classList.remove('pressed'));
-                            btn.addEventListener('blur', () => btn.classList.remove('pressed'));
-                        }
+        function renderPagination(hasMore) {
+            const paginationEl = dialog.querySelector('#cnb-issue-pagination');
+            if (!paginationEl) return;
+
+            paginationEl.innerHTML = '';
+
+            // 第一页不显示"上一页"按钮
+            if (currentPage > 1) {
+                const prevBtn = document.createElement('button');
+                prevBtn.textContent = '上一页';
+                prevBtn.style.cssText = 'padding:4px 8px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
+                prevBtn.addEventListener('click', () => {
+                    if (currentPage > 1) {
+                        currentPage--;
+                        loadIssues(currentPage);
                     }
-
-                    // 初次渲染全部
-                    render(null);
-                } catch (e) {
-                    listEl.innerHTML = `<div style="padding:12px;color:#d32f2f;">解析失败</div>`;
-                }
-            },
-            onerror: function() {
-                listEl.innerHTML = `<div style="padding:12px;color:#d32f2f;">网络请求失败</div>`;
+                });
+                paginationEl.appendChild(prevBtn);
             }
-        });
+
+            // 最后一页不显示"下一页"按钮
+            if (hasMore) {
+                const nextBtn = document.createElement('button');
+                nextBtn.textContent = '下一页';
+                nextBtn.style.cssText = 'padding:4px 8px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
+                nextBtn.addEventListener('click', () => {
+                    currentPage++;
+                    loadIssues(currentPage);
+                });
+                paginationEl.appendChild(nextBtn);
+            }
+        }
+
+        // 渲染筛选按钮
+        const filterEl = dialog.querySelector('#cnb-issue-filter');
+        if (filterEl) {
+            filterEl.innerHTML = '';
+            const allBtn = document.createElement('button');
+            allBtn.className = 'cnb-issue-filter-btn active';
+            allBtn.textContent = '全部';
+            applyFilterButtonStyles(allBtn);
+            applyFilterButtonActive(allBtn);
+            addPressEffect(allBtn);
+            allBtn.addEventListener('click', () => {
+                setActive(allBtn);
+                currentFilterLabel = null;
+                renderList(null);
+            });
+            filterEl.appendChild(allBtn);
+
+            const tagList = Array.isArray(SAVED_TAGS) ? SAVED_TAGS : [];
+            tagList.forEach(tag => {
+                const b = document.createElement('button');
+                b.className = 'cnb-issue-filter-btn';
+                b.textContent = tag;
+                applyFilterButtonStyles(b);
+                addPressEffect(b);
+                b.addEventListener('click', () => {
+                    setActive(b);
+                    currentFilterLabel = tag;
+                    renderList(tag);
+                });
+                filterEl.appendChild(b);
+            });
+
+            function setActive(btn) {
+                const buttons = filterEl.querySelectorAll('button');
+                buttons.forEach(x => {
+                    x.classList.remove('active');
+                    applyFilterButtonDefault(x);
+                });
+                btn.classList.add('active');
+                applyFilterButtonActive(btn);
+            }
+
+            // 行内样式（带 !important）确保胶囊风格不被站点覆盖
+            function applyFilterButtonStyles(btn) {
+                const s = btn.style;
+                s.setProperty('display', 'inline-flex', 'important');
+                s.setProperty('align-items', 'center', 'important');
+                s.setProperty('gap', '6px', 'important');
+                s.setProperty('padding', '4px 10px', 'important');
+                s.setProperty('border', '1px solid #d0d7de', 'important');
+                s.setProperty('border-radius', '9999px', 'important');
+                s.setProperty('background', '#fff', 'important');
+                s.setProperty('color', '#24292f', 'important');
+                s.setProperty('font-size', '13px', 'important');
+                s.setProperty('line-height', '1.2', 'important');
+                s.setProperty('white-space', 'nowrap', 'important');
+                s.setProperty('vertical-align', 'middle', 'important');
+                s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
+                s.setProperty('transition', 'background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease', 'important');
+                s.setProperty('cursor', 'pointer', 'important');
+                s.setProperty('user-select', 'none', 'important');
+                // 关键：移除按钮自身外边距，确保由容器 gap 控制间距
+                s.setProperty('margin', '0', 'important');
+            }
+            function applyFilterButtonDefault(btn) {
+                const s = btn.style;
+                s.setProperty('background', '#fff', 'important');
+                s.setProperty('border-color', '#d0d7de', 'important');
+                s.setProperty('color', '#24292f', 'important');
+                s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
+            }
+            function applyFilterButtonActive(btn) {
+                const s = btn.style;
+                s.setProperty('background', '#0366d6', 'important');
+                s.setProperty('border-color', '#0256b9', 'important');
+                s.setProperty('color', '#fff', 'important');
+                s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.05)', 'important');
+            }
+
+            // 为筛选按钮添加按压反馈
+            function addPressEffect(btn) {
+                btn.addEventListener('mousedown', () => btn.classList.add('pressed'));
+                btn.addEventListener('mouseup', () => btn.classList.remove('pressed'));
+                btn.addEventListener('mouseleave', () => btn.classList.remove('pressed'));
+                btn.addEventListener('touchstart', () => btn.classList.add('pressed'), { passive: true });
+                btn.addEventListener('touchend', () => btn.classList.remove('pressed'));
+                btn.addEventListener('touchcancel', () => btn.classList.remove('pressed'));
+                btn.addEventListener('blur', () => btn.classList.remove('pressed'));
+            }
+        }
+
+        // 首次加载第一页
+        loadIssues(1);
 
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
+
+        console.log('[CNB Issue] overlay added:', document.body.contains(overlay));
+        console.log('[CNB Issue] dialog added:', document.body.contains(dialog));
+        console.log('[CNB Issue] dialog.className:', dialog.className);
     }
 
     // 剪贴板弹窗（独立样式），展示 Issue #25
     function openClipboardWindow() {
-        // 单例：若已存在旧窗口，先移除
+        // 单例：若已存在旧窗口或标签，先移除
         try { if (__CNB_CLIP_DIALOG && __CNB_CLIP_DIALOG.parentNode) __CNB_CLIP_DIALOG.remove(); } catch (_) {}
+        try {
+            const existingTabs = document.getElementById('cnb-clipwin-tabs');
+            if (existingTabs) existingTabs.remove();
+        } catch (_) {}
+        __CNB_CLIP_DIALOG = null;
         try {
             // 注入独立样式（不复用 .cnb-issue-dialog），无遮罩，默认居中，可拖动
             addStyleOnce('clipwin-base', `
@@ -2054,152 +2457,216 @@ ${md}`, 'text');
                     max-height: 80vh;
                     display: flex; flex-direction: column;
                     background: #ffffff;
-                    border: 1px solid #d0d7de;
-                    border-radius: 12px;
-                    box-shadow: 0 12px 32px rgba(0,0,0,0.18);
+                    border: 2px solid #000;
+                    border-radius: 0;
+                    box-shadow: 4px 4px 0 #000;
                     z-index: 10010;
                     overflow: hidden;
-                    font: 14px/1.5 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;
-                    color: #24292f;
+                    font: 13px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;
+                    color: #000;
                 }
                 .cnb-clipwin-header {
                     position: relative;
-                    height: 30px;
-                    border-bottom: 1px solid #eaeef2;
-                    background: linear-gradient(180deg, #fbfdff, #f6f8fa);
+                    height: 28px;
+                    border-bottom: 2px solid #000;
+                    background: #000;
                     cursor: move; /* 拖动条 */
                 }
                 .cnb-clipwin-close {
                     position: absolute;
-                    right: 40px; top: 3px;
+                    right: 6px; top: 3px;
                     border: none; background: transparent;
-                    color: #57606a; font-size: 18px; line-height: 1;
+                    color: #fff; font-size: 18px; line-height: 1;
                     cursor: pointer;
+                    padding: 0 4px;
                 }
                 .cnb-clipwin-pin {
                     position: absolute;
-                    right: 6px; top: 6px;
+                    right: 30px; top: 5px;
                     border: none; background: transparent;
-                    color: #57606a; line-height: 1;
+                    color: #fff; line-height: 1;
                     cursor: pointer;
                     padding: 2px;
                 }
                 /* 左上角标题 */
                 .cnb-clipwin-title {
                     position: absolute;
-                    left: 8px; top: 8px;
+                    left: 6px; top: 6px;
                     border: none; background: transparent;
-                    color: #24292f; line-height: 1; font-size: 12.5px; font-weight: 600;
-                    pointer-events: none;
+                    color: #fff; line-height: 1; font-size: 11px; font-weight: 600;
+                    pointer-events: auto;
                 }
-                .cnb-clipwin-close:hover, .cnb-clipwin-pin:hover { color: #24292f; }
-                .menuBar-Btn_Icon-pin.isActive { fill: #0366d6; }
+                .cnb-clipwin-title a {
+                    color: #fff;
+                    text-decoration: none;
+                }
+                .cnb-clipwin-title a:hover {
+                    text-decoration: underline;
+                }
+                    text-transform: uppercase;
+                }
+                .cnb-clipwin-close:hover, .cnb-clipwin-pin:hover { color: #ccc; }
+                /* 固定按钮图标样式 */
+                .cnb-clipwin-pin svg {
+                    fill: rgba(255, 255, 255, 0.5);
+                    transition: fill 0.15s ease;
+                }
+                .cnb-clipwin-pin:hover svg {
+                    fill: rgba(255, 255, 255, 0.8);
+                }
+                .menuBar-Btn_Icon-pin.isActive {
+                    fill: #2ea043 !important;
+                }
                 .cnb-clipwin-content {
-                    padding: 8px 12px;
+                    padding: 8px;
                     overflow: auto;
-                    flex: 1 1 auto;
+                }
+                .cnb-clipwin-tabs {
+                    position: fixed;
+                    left: 50%;
+                    top: 50%;
+                    display: flex;
+                    flex-direction: column;
+                    z-index: 10011;
+                }
+                .cnb-clipwin-tab {
+                    margin: 2px 0;
+                    padding: 5px 12px;
+                    padding-left: 12px;
+                    background: #f5f5f5;
+                    border: 2px solid #000;
+                    border-right: none;
+                    cursor: pointer;
+                    font-size: 12px;
+                    font-weight: 500;
+                    color: #000;
+                    text-align: left;
+                    min-width: 60px;
+                }
+                .cnb-clipwin-tab:hover {
+                    background: #e0e0e0;
+                }
+                .cnb-clipwin-tab.active {
+                    background: #fff;
+                    color: #000;
+                    font-weight: 600;
+                }
+                .cnb-clipwin-tab.active::after {
+                    content: '';
+                    display: block;
+                    margin-right: -1px;
+                    height: 100%;
+                    width: 1px;
+                    background: #fff;
                 }
                 .cnb-clipwin-body {
                     margin: 0;
-                    padding: 10px;
-                    background: #f6f8fa;
-                    border: 1px solid #d0d7de;
-                    border-radius: 8px;
+                    padding: 8px;
+                    background: #fff;
+                    border: 2px solid #000;
+                    border-radius: 0;
                     white-space: pre-wrap;
                     word-break: break-word;
                     font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-                    font-size: 12px;
+                    font-size: 11px;
+                    line-height: 1.4;
                     max-height: 60vh;
                     overflow: auto;
                 }
                 .cnb-clipwin-actions {
-                    border-top: 1px solid #eaeef2;
-                    padding: 10px 16px;
-                    display: flex; gap: 8px; justify-content: flex-end;
+                    border-top: 2px solid #000;
+                    padding: 8px 12px;
+                    display: flex; gap: 6px; justify-content: flex-end;
                     background: #fff;
                 }
                 .cnb-clipwin-btn {
                     display: inline-flex; align-items: center; justify-content: center;
-                    height: 32px; padding: 0 12px; border-radius: 8px;
-                    border: 1px solid #d0d7de; background: #f6f8fa; color: #24292f;
-                    cursor: pointer; transition: background-color .15s ease, box-shadow .15s ease, transform .02s ease;
+                    height: 28px; padding: 0 12px; border-radius: 0;
+                    border: 2px solid #000; background: #fff; color: #000;
+                    font-size: 12px; font-weight: 600;
+                    cursor: pointer; transition: all 0.1s ease;
+                    box-shadow: 2px 2px 0 #000;
                 }
-                .cnb-clipwin-btn:hover { background: #eef2f6; box-shadow: 0 2px 6px rgba(0,0,0,0.12); }
-                .cnb-clipwin-btn:active { transform: translateY(1px); box-shadow: 0 1px 3px rgba(0,0,0,0.18); }
+                .cnb-clipwin-btn:hover { background: #000; color: #fff; }
+                .cnb-clipwin-btn:active { transform: translate(2px, 2px); box-shadow: none; }
             `);
         } catch (_) {}
 
-        // 覆盖剪贴板窗口内容样式，适配 HTML 渲染
+        // 覆盖剪贴板窗口内容样式，适配 HTML 渲染 - 扁平黑白配色
         try {
             addStyleOnce('clipwin-body', `
                 .cnb-clipwin-body {
                     margin: 0;
-                    padding: 12px;
+                    padding: 8px;
                     background: #ffffff;
-                    border: 1px solid #e5e7eb;
-                    border-radius: 8px;
+                    border: 2px solid #000;
+                    border-radius: 0;
                     word-break: break-word;
                     font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;
-                    font-size: 13px;
-                    line-height: 1.55;
-                    color: #24292f;
+                    font-size: 12px;
+                    line-height: 1.4;
+                    color: #000;
                     max-height: 65vh;
                     overflow: auto;
                 }
-                .cnb-clipwin-body h1 { font-size: 1.75em; margin: .4em 0; }
-                .cnb-clipwin-body h2 { font-size: 1.5em; margin: .6em 0 .4em; }
-                .cnb-clipwin-body h3 { font-size: 1.25em; margin: .6em 0 .4em; }
-                .cnb-clipwin-body p  { margin: .4em 0; }
-                .cnb-clipwin-body ul, .cnb-clipwin-body ol { padding-left: 1.5em; margin: .4em 0; }
-                .cnb-clipwin-body blockquote {
-                    margin: .6em 0; padding: .4em .8em; color:#57606a; background:#f6f8fa; border-left: 4px solid #d0d7de; border-radius: 4px;
+                .cnb-clipwin-body * {
+                    margin-top: 0 !important;
+                    margin-bottom: 0 !important;
                 }
-                .cnb-clipwin-body hr { border: none; border-top: 1px solid #e5e7eb; margin: .8em 0; }
+                .cnb-clipwin-body h1 { font-size: 1.5em; margin: .3em 0 .2em 0 !important; font-weight: 700; color: #000; }
+                .cnb-clipwin-body h2 { font-size: 1.3em; margin: .3em 0 .2em 0 !important; font-weight: 700; color: #000; }
+                .cnb-clipwin-body h3 { font-size: 1.15em; margin: .3em 0 .2em 0 !important; font-weight: 700; color: #000; }
+                .cnb-clipwin-body p  { margin: .2em 0 !important; color: #000; }
+                .cnb-clipwin-body ul, .cnb-clipwin-body ol { padding-left: 1.3em; margin: .2em 0 !important; color: #000; }
+                .cnb-clipwin-body blockquote {
+                    margin: .2em 0 !important; padding: .3em .6em; color:#000; background:#f5f5f5; border-left: 3px solid #000; border-radius: 0;
+                }
+                .cnb-clipwin-body hr { border: none; border-top: 2px solid #000; margin: .3em 0 !important; }
                 .cnb-clipwin-body code {
-                    background: #f6f8fa; border: 1px solid #e5e7eb; border-radius: 4px; padding: .1em .35em; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size: .92em;
+                    background: #000; border: none; border-radius: 0; padding: .08em .3em; font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace; font-size: .88em; color: #fff;
                 }
                 .cnb-clipwin-body pre {
-                    background: #0b1021; color: #e6edf3; border-radius: 8px; padding: 8px 0px 8px 8px; overflow-x: hidden; overflow-y: auto;
+                    background: #000; color: #fff; border-radius: 0; padding: 8px; margin: .2em 0 .3em 0 !important; overflow-x: hidden; overflow-y: auto;
                 }
                 .cnb-clipwin-body pre code { background: transparent; border: none; padding: 0; color: inherit; font-size: .92em; white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
-                .cnb-clipwin-body a { color: #0969da; text-decoration: none; }
-                .cnb-clipwin-body a:hover { text-decoration: underline; }
+                .cnb-clipwin-body a { color: #000; text-decoration: underline; font-weight: 500; }
+                .cnb-clipwin-body a:hover { text-decoration: underline; color: #666; }
             `);
         } catch (_) {}
-        /* 剪贴板窗口滚动条样式：细黑条（仅作用于剪贴板窗口） */
+        /* 剪贴板窗口滚动条样式：扁平黑白（仅作用于剪贴板窗口） */
         try {
             GM_addStyle(`
                 /* Firefox */
                 .cnb-clipwin, .cnb-clipwin-content, .cnb-clipwin-body, .cnb-clipwin-body pre {
                     scrollbar-width: thin;
-                    scrollbar-color: #000 transparent;
+                    scrollbar-color: #000 #f5f5f5;
                 }
                 /* WebKit */
                 .cnb-clipwin::-webkit-scrollbar,
                 .cnb-clipwin-content::-webkit-scrollbar,
                 .cnb-clipwin-body::-webkit-scrollbar,
                 .cnb-clipwin-body pre::-webkit-scrollbar {
-                    width: 3px;
-                    height: 3px;
+                    width: 8px;
+                    height: 8px;
                 }
                 .cnb-clipwin::-webkit-scrollbar-track,
                 .cnb-clipwin-content::-webkit-scrollbar-track,
                 .cnb-clipwin-body::-webkit-scrollbar-track,
                 .cnb-clipwin-body pre::-webkit-scrollbar-track {
-                    background: transparent;
+                    background: #f5f5f5;
                 }
                 .cnb-clipwin::-webkit-scrollbar-thumb,
                 .cnb-clipwin-content::-webkit-scrollbar-thumb,
                 .cnb-clipwin-body::-webkit-scrollbar-thumb,
                 .cnb-clipwin-body pre::-webkit-scrollbar-thumb {
-                    background: #000000;
-                    border-radius: 2px;
+                    background: #000;
+                    border-radius: 0;
                 }
                 .cnb-clipwin::-webkit-scrollbar-thumb:hover,
                 .cnb-clipwin-content::-webkit-scrollbar-thumb:hover,
                 .cnb-clipwin-body::-webkit-scrollbar-thumb:hover,
                 .cnb-clipwin-body pre::-webkit-scrollbar-thumb:hover {
-                    background: #000000;
+                    background: #333;
                 }
             `);
         } catch (_) {}
@@ -2211,6 +2678,15 @@ ${md}`, 'text');
             if (typeof openSettingsDialog === 'function') openSettingsDialog();
             return;
         }
+
+        // 如果已存在旧窗口，先清理
+        try { if (__CNB_CLIP_DIALOG) __CNB_CLIP_DIALOG.remove(); } catch (_) {}
+        // 移除所有旧的标签容器
+        try {
+            const oldTabsList = document.querySelectorAll('.cnb-clipwin-tabs');
+            oldTabsList.forEach(tab => tab.remove());
+        } catch (_) {}
+        __CNB_CLIP_DIALOG = null;
 
         // 仅创建窗口（无遮罩）
         const dialog = document.createElement('div');
@@ -2224,6 +2700,7 @@ ${md}`, 'text');
                         <path class="menuBar-Btn_Icon-pin" d="M52.963 21.297c-.068-.33-.297-.603-.61-.727-8.573-3.416-16.172-.665-18.36.288L19.113 8.2C19.634 3.632 17.17.508 17.06.372c-.18-.22-.442-.356-.725-.372-.282-.006-.56.09-.76.292L.32 15.546c-.202.2-.308.48-.29.765.015.285.152.55.375.727 2.775 2.202 6.35 2.167 7.726 2.055l12.722 14.953c-.868 2.23-3.52 10.27-.307 18.337.124.313.397.54.727.61.067.013.135.02.202.02.263 0 .518-.104.707-.293l14.57-14.57 13.57 13.57c.196.194.452.292.708.292s.512-.098.707-.293c.39-.392.39-1.024 0-1.415l-13.57-13.57 14.527-14.528c.237-.238.34-.58.27-.91zm-17.65 15.458L21.89 50.18c-2.437-8.005.993-15.827 1.03-15.91.158-.352.1-.764-.15-1.058L9.31 17.39c-.19-.225-.473-.352-.764-.352-.05 0-.103.004-.154.013-.036.007-3.173.473-5.794-.954l13.5-13.5c.604 1.156 1.39 3.26.964 5.848-.058。346。07。697。338。924l15.785 13.43c.31。262。748。31 1.105。128。077-.04 7.378-3.695 15.87-1.017L35.313 36.754z"></path>
                     </svg>
                 </button>
+                <button class="cnb-clipwin-close" title="关闭">×</button>
             </div>
             <div class="cnb-clipwin-content">
                 <pre id="cnb-clipwin-body" class="cnb-clipwin-body">加载中…</pre>
@@ -2231,35 +2708,67 @@ ${md}`, 'text');
 
         `;
 
-        let pinned = false;
+        // 读取存储的固定状态，默认为true（固定）
+        let pinned = true;
+        try {
+            if (typeof GM_getValue === 'function') {
+                const savedPinned = GM_getValue('cnbClipboardPinned', null);
+                if (savedPinned !== null) {
+                    pinned = Boolean(savedPinned);
+                }
+            }
+        } catch (_) {}
 
         function cleanup() {
             document.removeEventListener('mousedown', onDocDown, true);
             document.removeEventListener('mouseup', onDocUp, true);
             document.removeEventListener('mousemove', onDocMove, true);
             document.removeEventListener('click', onOutsideClick, true);
+            if (typeof onEsc === 'function') document.removeEventListener('keydown', onEsc, true);
         }
         function close() {
             cleanup();
             try { dialog.remove(); } catch (_) {}
+            try { tabsContainer.remove(); } catch (_) {}
             try { if (__CNB_CLIP_DIALOG === dialog) __CNB_CLIP_DIALOG = null; } catch (_) {}
         }
 
         const btnPin = dialog.querySelector('.cnb-clipwin-pin');
-        if (btnPin) btnPin.addEventListener('click', () => {
-            pinned = !pinned;
+        // 初始化按钮状态
+        if (btnPin) {
             const path = btnPin.querySelector('.menuBar-Btn_Icon-pin');
             if (path) {
                 if (pinned) path.classList.add('isActive');
                 else path.classList.remove('isActive');
             }
-        });
+            btnPin.addEventListener('click', () => {
+                pinned = !pinned;
+                if (path) {
+                    if (pinned) path.classList.add('isActive');
+                    else path.classList.remove('isActive');
+                }
+                // 保存固定状态
+                try {
+                    if (typeof GM_setValue === 'function') {
+                        GM_setValue('cnbClipboardPinned', pinned);
+                    }
+                } catch (_) {}
+            });
+        }
+        // 关闭按钮事件
+        const btnClose = dialog.querySelector('.cnb-clipwin-close');
+        if (btnClose) btnClose.addEventListener('click', close);
+
         // 复制按钮：复制窗口内容（优先原始 Markdown）
         const btnCopy = dialog.querySelector('.cnb-clipwin-copy');
         if (btnCopy) btnCopy.addEventListener('click', async () => {
             try {
                 const body = dialog.querySelector('#cnb-clipwin-body');
-                const text = (body && body.dataset && body.dataset.mdraw) ? body.dataset.mdraw : (body ? body.textContent : '');
+                const rawText = (body && body.dataset && body.dataset.mdraw) ? body.dataset.mdraw : (body ? body.textContent : '');
+                // 使用更激进的清理函数移除空行
+                const text = typeof cleanMarkdownContentForCopy === 'function'
+                    ? cleanMarkdownContentForCopy(String(rawText || ''))
+                    : String(rawText || '');
                 if (typeof GM_setClipboard === 'function') {
                     GM_setClipboard(String(text || ''), 'text');
                 } else if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -2274,9 +2783,18 @@ ${md}`, 'text');
         // 点击窗口外关闭（未固定时）
         function onOutsideClick(e) {
             if (pinned) return;
-            if (!dialog.contains(e.target)) close();
+            if (!dialog.contains(e.target) && !tabsContainer.contains(e.target)) close();
         }
         document.addEventListener('click', onOutsideClick, true);
+
+        // ESC 关闭
+        function onEsc(e) {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+            }
+        }
+        document.addEventListener('keydown', onEsc, true);
 
         // 拖动逻辑（拖拽 header）
         const header = dialog.querySelector('.cnb-clipwin-header');
@@ -2295,140 +2813,228 @@ ${md}`, 'text');
                 dialog.style.left = rect.left + 'px';
                 dialog.style.top = rect.top + 'px';
                 dialog.style.transform = 'none';
+                // 标签在窗口左侧，需要减去标签的宽度，向下偏移 29px
+                const tabWidth = tabsContainer.offsetWidth || 80;
+                tabsContainer.style.left = (rect.left - tabWidth) + 'px';
+                tabsContainer.style.top = (rect.top + 29) + 'px';
+                tabsContainer.style.transform = 'none';
             }
         }
         function onDocUp() {
-            dragging = false;
+            if (dragging) {
+                dragging = false;
+                // 保存窗口位置
+                try {
+                    if (typeof GM_setValue === 'function') {
+                        const rect = dialog.getBoundingClientRect();
+                        GM_setValue('cnbClipboardWindowPos', JSON.stringify({
+                            left: rect.left,
+                            top: rect.top
+                        }));
+                    }
+                } catch (_) {}
+            }
         }
         function onDocMove(e) {
             if (!dragging) return;
             const dx = e.clientX - startX;
             const dy = e.clientY - startY;
+            const tabWidth = tabsContainer.offsetWidth || 80;
             dialog.style.left = (boxX + dx) + 'px';
             dialog.style.top = (boxY + dy) + 'px';
+            // 标签跟随窗口移动，在窗口左侧，向下偏移 29px
+            tabsContainer.style.left = (boxX + dx - tabWidth) + 'px';
+            tabsContainer.style.top = (boxY + dy + 29) + 'px';
         }
         document.addEventListener('mousedown', onDocDown, true);
         document.addEventListener('mouseup', onDocUp, true);
         document.addEventListener('mousemove', onDocMove, true);
 
+        // 创建外部标签容器（在窗口左侧）
+        // 先确保没有旧的标签容器
+        const existingTabs = document.getElementById('cnb-clipwin-tabs');
+        if (existingTabs) existingTabs.remove();
+
+        const tabsContainer = document.createElement('div');
+        tabsContainer.className = 'cnb-clipwin-tabs';
+        tabsContainer.id = 'cnb-clipwin-tabs';
+        // 初始隐藏，等标签创建后再显示
+        tabsContainer.style.display = 'none';
+        // 将标签容器插入到 dialog 之前（作为兄弟元素）
+        document.body.appendChild(tabsContainer);
         document.body.appendChild(dialog);
 
         const bodyEl = dialog.querySelector('#cnb-clipwin-body');
+        const tabsEl = tabsContainer;
 
-        // 读取剪贴板位置（Issue编号）
+        // 读取剪贴板位置（Issue编号和窗口位置）
         let __clipIssueNum = '';
+        let __clipWinPos = { left: null, top: null };
         try {
             if (typeof GM_getValue === 'function') {
                 const v = GM_getValue('cnbClipboardIssue', '');
                 __clipIssueNum = String(v || '').trim();
+                const pos = GM_getValue('cnbClipboardWindowPos', '');
+                if (pos) {
+                    try {
+                        __clipWinPos = JSON.parse(pos);
+                    } catch (_) {}
+                }
             }
         } catch (_) {}
-        if (!__clipIssueNum) {
-            if (bodyEl) bodyEl.textContent = '未配置剪贴板位置';
-            return;
-        }
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${encodeURIComponent(__clipIssueNum)}`;
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url,
-            headers: {
-                'Accept': 'application/json',
-                'Authorization': `${CONFIG.accessToken}`
-            },
-            responseType: 'json',
-            onload: function(res) {
-                try {
-                    if (res.status >= 200 && res.status < 300) {
-                        let data = null;
-                        try {
-                            data = (typeof res.response === 'object' && res.response !== null)
-                                ? res.response
-                                : JSON.parse(res.responseText || '{}');
-                        } catch (_) {}
 
-                        const rawBody = typeof data?.body === 'string' ? data.body : '';
-                        const md = typeof cleanMarkdownContent === 'function'
-                            ? cleanMarkdownContent(String(rawBody || ''))
-                            : String(rawBody || '');
-                        if (bodyEl) {
-                            bodyEl.dataset.mdraw = md;
-                            bodyEl.innerHTML = (typeof markdownToHtml === 'function') ? markdownToHtml(md) : md;
-                            // 移除所有 <br>，避免用换行标签作为分隔
-                            try { bodyEl.querySelectorAll('br').forEach(br => br.remove()); } catch (_) {}
-                            // 设置标题文本（优先 Issue 标题）
-                            const titleEl = dialog.querySelector('.cnb-clipwin-title');
-                            const t = (data && typeof data.title === 'string' && data.title) ? data.title : '剪贴板';
-                            if (titleEl) titleEl.textContent = t;
-                            // 为每个代码块注入右上角复制按钮，并设置布局
-                            const pres = bodyEl.querySelectorAll('pre');
-                            pres.forEach(pre => {
-                                try {
-                                    pre.style.marginTop = '5px';
-                                    pre.style.marginBottom = '5px';
-                                    pre.style.position = 'relative';
-                                    if (!pre.style.paddingRight) pre.style.paddingRight = '36px';
-                                    if (!pre.querySelector('.cnb-codecopy-inline')) {
-                                        // 确保右上角控制容器（同一父容器，便于排列“展开”与“复制”）
-                                        let controls = pre.querySelector('.cnb-code-controls');
-                                        if (!controls) {
-                                            controls = document.createElement('div');
-                                            controls.className = 'cnb-code-controls';
-                                            pre.appendChild(controls);
-                                        }
-                                        const btn = document.createElement('button');
-                                        btn.className = 'cnb-codecopy-inline';
-                                        btn.type = 'button';
-                                        btn.title = '复制代码';
-                                        btn.setAttribute('aria-label', '复制代码');
-                                        // 样式由 .cnb-code-controls 统一提供
-                                        btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
-                                        btn.addEventListener('mouseenter', () => { btn.style.background = 'rgba(255,255,255,0.18)'; btn.style.opacity = '0.95'; });
-                                        btn.addEventListener('mouseleave', () => { btn.style.background = 'rgba(255,255,255,0.10)'; btn.style.opacity = ''; });
-                                        btn.addEventListener('click', async (e) => {
-                                            e.stopPropagation();
-                                            const codeEl = pre.querySelector('code');
-                                            const text = codeEl ? codeEl.textContent : pre.textContent;
-                                            try {
-                                                if (typeof GM_setClipboard === 'function') {
-                                                    GM_setClipboard(String(text || ''), 'text');
-                                                } else if (navigator.clipboard && navigator.clipboard.writeText) {
-                                                    await navigator.clipboard.writeText(String(text || ''));
-                                                }
-                                                if (typeof GM_notification === 'function') {
-                                                    GM_notification({ text: '代码已复制', title: 'CNB 剪贴板', timeout: 1500 });
-                                                }
-                                                // 点击反馈动画：对勾+变色+轻微放大，随后恢复
-                                                try {
-                                                    const prevHTML = btn.innerHTML;
-                                                    const prevBg = btn.style.background;
-                                                    const prevTransform = btn.style.transform;
-                                                    // 增强过渡，加入缩放动画
-                                                    const prevTransition = btn.style.transition;
-                                                    btn.style.transition = prevTransition ? (prevTransition + ', transform .12s ease') : 'transform .12s ease, background-color .15s ease, opacity .15s ease';
-                                                    // 切换对勾图标与高亮
-                                                    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 16.2l-3.5-3.5-1.4 1.4L9 19 20.3 7.7l-1.4-1.4z"/></svg>';
-                                                    btn.style.background = 'rgba(46,160,67,0.35)'; // 绿色反馈
-                                                    btn.style.transform = 'scale(1.08)';
-                                                    setTimeout(() => {
-                                                        btn.style.transform = prevTransform || '';
-                                                        btn.style.background = prevBg || 'rgba(255,255,255,0.10)';
-                                                        btn.innerHTML = prevHTML;
-                                                        // 恢复原 transition（若有）
-                                                        if (prevTransition !== undefined) btn.style.transition = prevTransition;
-                                                    }, 700);
-                                                } catch (_) {}
-                                            } catch (_) {}
-                                        });
-                                        controls.appendChild(btn);
-                                    }
-                                } catch (_) {}
-                            });
+        // 解析多个 Issue 编号（支持逗号分隔，如 "2,3,4"）
+        const issueList = __clipIssueNum.split(/[,，]/).map(s => s.trim()).filter(s => s);
+        const hasMultipleIssues = issueList.length > 1;
+
+        // 显示标签栏（仅在多个 Issue 时）
+        if (hasMultipleIssues) {
+            tabsEl.style.display = 'flex';
+        } else {
+            tabsEl.style.display = 'none';
+        }
+
+        // 当前激活的 Issue 索引（默认第一个）
+        let currentIssueIndex = 0;
+        let issueDataCache = {}; // 缓存已加载的 Issue 数据
+
+        // 函数：加载指定 Issue 的内容
+        function loadIssue(issueNum, index) {
+            const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${encodeURIComponent(issueNum)}`;
+            bodyEl.textContent = '加载中…';
+
+            // 如果已缓存，直接使用
+            if (issueDataCache[index]) {
+                renderIssueContent(issueDataCache[index], issueNum);
+                return;
+            }
+
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url,
+                headers: {
+                    'Accept': 'application/json',
+                    'Authorization': `${CONFIG.accessToken}`
+                },
+                responseType: 'json',
+                onload: function(res) {
+                    try {
+                        if (res.status >= 200 && res.status < 300) {
+                            let data = null;
+                            try {
+                                data = (typeof res.response === 'object' && res.response !== null)
+                                    ? res.response
+                                    : JSON.parse(res.responseText || '{}');
+                            } catch (_) {}
+
+                            // 缓存数据
+                            issueDataCache[index] = data;
+                            renderIssueContent(data, issueNum);
+                        } else {
+                            bodyEl.textContent = `加载失败 (HTTP ${res.status})`;
                         }
-                        // 行为增强：为每个代码块提供“两行预览 + 展开/收起”，复制仍复制全文
+                    } catch (e) {
+                        bodyEl.textContent = '加载出错';
+                    }
+                },
+                onerror: function() {
+                    bodyEl.textContent = '网络错误';
+                }
+            });
+        }
+
+        // 函数：渲染 Issue 内容
+        function renderIssueContent(data, issueNum) {
+            const rawBody = typeof data?.body === 'string' ? data.body : '';
+            const md = typeof cleanMarkdownContent === 'function'
+                ? cleanMarkdownContent(String(rawBody || ''))
+                : String(rawBody || '');
+
+            if (bodyEl) {
+                bodyEl.dataset.mdraw = md;
+                bodyEl.innerHTML = (typeof markdownToHtml === 'function') ? markdownToHtml(md) : md;
+                // 移除所有 <br>，避免用换行标签作为分隔
+                try { bodyEl.querySelectorAll('br').forEach(br => br.remove()); } catch (_) {}
+            }
+
+            // 设置标题文本和链接（优先 Issue 标题）
+            const titleEl = dialog.querySelector('.cnb-clipwin-title');
+            const t = (data && typeof data.title === 'string' && data.title) ? data.title : '剪贴板';
+
+            // 保存 Issue 标题到本地
+            try {
+                if (typeof GM_getValue === 'function' && typeof GM_setValue === 'function') {
+                    const titles = GM_getValue('cnbClipboardIssueTitles', '{}');
+                    const titleMap = typeof titles === 'object' ? titles : {};
+                    titleMap[String(issueNum)] = t;
+                    GM_setValue('cnbClipboardIssueTitles', titleMap);
+                }
+            } catch (_) {}
+
+            let issueUrl = '';
+            if (data && data.web_url) {
+                issueUrl = data.web_url;
+            } else if (data && data.html_url) {
+                issueUrl = data.html_url;
+            } else if (data && data.iid) {
+                // 如果 API 没有返回 URL，则手动构建
+                issueUrl = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${data.iid}`;
+            } else if (issueNum) {
+                issueUrl = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${issueNum}`;
+            }
+            if (titleEl) {
+                if (issueUrl) {
+                    titleEl.innerHTML = `<a href="${issueUrl}" target="_blank" rel="noopener noreferrer" style="color:#fff;text-decoration:none;">${t}</a>`;
+                } else {
+                    titleEl.textContent = t;
+                }
+            }
+
+            // 更新对应标签的标题
+            // 通过 issueNum 找到对应的索引
+            const tabIndex = issueList.indexOf(String(issueNum));
+            if (tabIndex >= 0) {
+                updateTabTitle(tabIndex, t);
+            }
+
+            // 为每个代码块注入右上角复制按钮，并设置布局
+            const pres = bodyEl.querySelectorAll('pre');
+            pres.forEach(pre => {
+                try {
+                    pre.style.marginTop = '5px';
+                    pre.style.marginBottom = '5px';
+                    pre.style.cursor = 'pointer';
+                    pre.style.transition = 'background-color 0.15s ease';
+                    // 点击代码块复制
+                    pre.addEventListener('click', async (e) => {
+                        const codeEl = pre.querySelector('code');
+                        const text = codeEl ? codeEl.textContent : pre.textContent;
+                        const cleanText = String(text || '').trim();
                         try {
-                          if (typeof GM_addStyle === 'function') {
-                            addStyleOnce('clipwin-pre-controls', `
-                              .cnb-pre-collapsed {
+                            if (typeof GM_setClipboard === 'function') {
+                                GM_setClipboard(cleanText, 'text');
+                            } else if (navigator.clipboard && navigator.clipboard.writeText) {
+                                await navigator.clipboard.writeText(cleanText);
+                            }
+                            // 视觉反馈：短暂闪烁绿色背景
+                            const prevBg = pre.style.backgroundColor;
+                            pre.style.backgroundColor = 'rgba(46, 160, 67, 0.3)';
+                            setTimeout(() => {
+                                pre.style.backgroundColor = prevBg;
+                            }, 200);
+                            if (typeof GM_notification === 'function') {
+                                GM_notification({ text: '代码已复制', title: 'CNB 剪贴板', timeout: 1500 });
+                            }
+                        } catch (_) {}
+                    });
+                } catch (_) {}
+            });
+
+            // 行为增强：为每个代码块提供"两行预览 + 展开/收起"，复制仍复制全文
+            try {
+              if (typeof GM_addStyle === 'function') {
+                addStyleOnce('clipwin-pre-controls', `
+                  .cnb-pre-collapsed {
                                 max-height: 3.2em; /* 约两行 */
                                 overflow: hidden;
                                 position: relative;
@@ -2452,21 +3058,24 @@ ${md}`, 'text');
                               }
                               .cnb-code-controls .cnb-codecopy-inline,
                               .cnb-code-controls .cnb-code-toggle {
-                                border: none;
-                                background: rgba(255,255,255,0.10);
-                                color: #e6edf3;
+                                border: 2px solid #fff;
+                                background: rgba(255,255,255,0.15);
+                                color: #fff;
                                 padding: 4px 6px;
-                                border-radius: 6px;
+                                border-radius: 0;
                                 cursor: pointer;
                                 line-height: 1;
                                 display: inline-flex;
                                 align-items: center;
                                 justify-content: center;
                                 font-size: 12px;
+                                font-weight: 600;
+                                transition: all 0.1s ease;
                               }
                               .cnb-code-controls .cnb-codecopy-inline:hover,
                               .cnb-code-controls .cnb-code-toggle:hover {
-                                background: rgba(255,255,255,0.18);
+                                background: #fff;
+                                color: #000;
                               }
                             `);
                           }
@@ -2496,151 +3105,234 @@ ${md}`, 'text');
                                 tbtn.className = 'cnb-code-toggle';
                                 tbtn.textContent = '展开';
                                 tbtn.title = '展开/收起';
+                                tbtn.addEventListener('mouseenter', () => { tbtn.style.background = '#fff'; tbtn.style.color = '#000'; });
+                                tbtn.addEventListener('mouseleave', () => { tbtn.style.background = 'rgba(255,255,255,0.15)'; tbtn.style.color = '#fff'; });
                                 tbtn.addEventListener('click', (e) => {
                                   e.stopPropagation();
                                   const collapsed = pre.classList.toggle('cnb-pre-collapsed');
                                   tbtn.textContent = collapsed ? '展开' : '收起';
                                 });
-                                const copyBtn = __controls.querySelector('.cnb-codecopy-inline');
-                                if (copyBtn) __controls.insertBefore(tbtn, copyBtn);
-                                else __controls.appendChild(tbtn);
+                                __controls.appendChild(tbtn);
                               }
                             } catch (_) {}
                           });
                         } catch (_) {}
 
-                        // 基于 h2 构建章节按键并切换显示
-                        try {
-                          const contentDiv = dialog.querySelector('.cnb-clipwin-content');
-                          if (contentDiv && bodyEl) {
-                            const h2s = Array.from(bodyEl.querySelectorAll('h2'));
-                            if (h2s.length) {
-                              const sections = [];
-                              for (let i = 0; i < h2s.length; i++) {
-                                const h = h2s[i];
-                                const sec = document.createElement('div');
-                                sec.className = 'cnb-sec';
-                                // 将 h2 及其之后内容（直到下一个 h2）打包进 section
-                                h.parentNode.insertBefore(sec, h);
-                                sec.appendChild(h);
-                                let next = sec.nextSibling;
-                                while (next && !(next.nodeType === 1 && next.tagName && next.tagName.toLowerCase() === 'h2')) {
-                                  const move = next;
-                                  next = next.nextSibling;
-                                  sec.appendChild(move);
-                                }
-                                sections.push(sec);
-                              }
-                              // 在正文之前插入 tabs 容器（注入样式）
-                              try {
-                                if (typeof GM_addStyle === 'function') {
-                                  GM_addStyle(`
-                                    .cnb-clipwin-tabs {
-                                      display: flex;
-                                      flex-wrap: wrap;
-                                      gap: 6px;
-                                      margin: 6px 0 8px;
-                                    }
-                                    .cnb-tab {
-                                      appearance: none;
-                                      border: 1px solid #d0d7de;
-                                      border-radius: 9999px;
-                                      padding: 4px 10px;
-                                      background: #fff;
-                                      color: #24292f;
-                                      cursor: pointer;
-                                      font-size: 12px;
-                                      line-height: 1.2;
-                                      transition: background-color .15s ease, color .15s ease, border-color .15s ease, box-shadow .15s ease;
-                                    }
-                                    .cnb-tab:hover {
-                                      background: #f6f8fa;
-                                      border-color: #b9c2cc;
-                                    }
-                                    .cnb-tab.active {
-                                      background: #0366d6;
-                                      color: #fff;
-                                      border-color: #0256b9;
-                                      box-shadow: 0 1px 2px rgba(2, 86, 185, .15);
-                                    }
-                                    .cnb-tab:focus {
-                                      outline: none;
-                                      box-shadow: 0 0 0 2px rgba(3,102,214,.25);
-                                    }
-                                  `);
-                                }
-                              } catch (_) {}
-                              let tabs = contentDiv.querySelector('.cnb-clipwin-tabs');
-                              if (!tabs) {
-                                tabs = document.createElement('div');
-                                tabs.className = 'cnb-clipwin-tabs';
-                                contentDiv.insertBefore(tabs, bodyEl);
-                              } else {
-                                tabs.innerHTML = '';
-                              }
-                              h2s.forEach((h, idx) => {
-                                const btn = document.createElement('button');
-                                btn.type = 'button';
-                                btn.textContent = (h.textContent || '').trim() || ('Section ' + (idx + 1));
-                                btn.className = 'cnb-tab';
-                                btn.addEventListener('click', () => {
-                                  sections.forEach((s, j) => { s.style.display = (j === idx) ? '' : 'none'; });
-                                  Array.from(tabs.children).forEach((b, i) => {
-                                    b.classList.toggle('active', i === idx);
-                                  });
-                                });
-                                tabs.appendChild(btn);
-                              });
-                              // 默认激活第一个
-                              if (tabs.firstElementChild) tabs.firstElementChild.click();
-                            }
-                          }
-                        } catch (_) {}
-                        // 渲染后隐藏 h2，并收紧 pre 间距与清理多余换行
-                        try {
-                            if (bodyEl) {
-                                // 隐藏所有 h2，去除占位
-                                bodyEl.querySelectorAll('h2').forEach(h => {
-                                    h.style.display = 'none';
-                                    h.style.margin = '0';
-                                    h.style.padding = '0';
-                                });
-                                // 移除所有 <br> 与空段落，避免形成额外间隙
-                                bodyEl.querySelectorAll('br').forEach(br => br.remove());
-                                bodyEl.querySelectorAll('p').forEach(p => {
-                                    const txt = (p.textContent || '').trim();
-                                    const onlyBr = p.children.length === 1 && p.firstElementChild && p.firstElementChild.tagName.toLowerCase() === 'br';
-                                    if (!txt || onlyBr) p.remove();
-                                });
-                                // 统一设置代码块上下间距与内边距
-                                bodyEl.querySelectorAll('pre').forEach(pre => {
-                                    pre.style.marginTop = '-17.5px';
-                                    pre.style.marginBottom = '2.5px';
-                                    pre.style.paddingTop = '6px';
-                                    pre.style.paddingBottom = '6px';
-                                });
-                                // 额外收紧：取消段落与分段容器的默认间距
-                                bodyEl.querySelectorAll('p').forEach(p => {
-                                    p.style.marginTop = '0';
-                                    p.style.marginBottom = '0';
-                                });
-                                bodyEl.querySelectorAll('.cnb-sec').forEach(sec => {
-                                    sec.style.margin = '0';
-                                    sec.style.padding = '0';
-                                });
-                            }
-                        } catch (_) {}
-                    } else {
-                        if (bodyEl) bodyEl.textContent = `加载失败: HTTP ${res.status}`;
-                    }
-                } catch (_) {
-                    if (bodyEl) bodyEl.textContent = '解析失败';
+            // 渲染后隐藏 h2，并收紧 pre 间距与清理多余换行
+            try {
+                if (bodyEl) {
+                    // 隐藏所有 h2，去除占位
+                    bodyEl.querySelectorAll('h2').forEach(h => {
+                        h.style.display = 'none';
+                        h.style.margin = '0';
+                        h.style.padding = '0';
+                    });
+                    // 移除所有 <br> 与空段落，避免形成额外间隙
+                    bodyEl.querySelectorAll('br').forEach(br => br.remove());
+                    bodyEl.querySelectorAll('p').forEach(p => {
+                        const txt = (p.textContent || '').trim();
+                        const onlyBr = p.children.length === 1 && p.firstElementChild && p.firstElementChild.tagName.toLowerCase() === 'br';
+                        if (!txt || onlyBr) p.remove();
+                    });
+                    // 统一设置代码块上下间距与内边距
+                    bodyEl.querySelectorAll('pre').forEach(pre => {
+                        pre.style.marginTop = '0';
+                        pre.style.marginBottom = '0';
+                    });
+                    // 额外收紧：取消段落与分段容器的默认间距
+                    bodyEl.querySelectorAll('p').forEach(p => {
+                        p.style.marginTop = '0';
+                        p.style.marginBottom = '0';
+                    });
+                    bodyEl.querySelectorAll('.cnb-sec').forEach(sec => {
+                        sec.style.margin = '0';
+                        sec.style.padding = '0';
+                    });
                 }
-            },
-            onerror: function() {
-                if (bodyEl) bodyEl.textContent = '网络请求失败，请稍后重试';
+            } catch (_) {}
+
+            // 基于 h2 构建章节按键并切换显示
+            try {
+              const contentDiv = dialog.querySelector('.cnb-clipwin-content');
+              const h2s = (bodyEl && bodyEl.querySelectorAll) ? bodyEl.querySelectorAll('h2') : [];
+              if (contentDiv && h2s.length > 1) {
+                const sections = [];
+                for (let i = 0; i < h2s.length; i++) {
+                  const h = h2s[i];
+                  const sec = document.createElement('div');
+                  sec.className = 'cnb-sec';
+                  // 将 h2 及其之后内容（直到下一个 h2）打包进 section
+                  h.parentNode.insertBefore(sec, h);
+                  sec.appendChild(h);
+                  let next = sec.nextSibling;
+                  while (next && !(next.nodeType === 1 && next.tagName && next.tagName.toLowerCase() === 'h2')) {
+                    const move = next;
+                    next = next.nextSibling;
+                    sec.appendChild(move);
+                  }
+                  sections.push(sec);
+                }
+                // 在正文之前插入 tabs 容器（注入样式 - 扁平黑白配色）
+                try {
+                  if (typeof GM_addStyle === 'function') {
+                    GM_addStyle(`
+                      .cnb-clipwin-tabs-inline {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 4px;
+                        margin: 4px 0 6px;
+                      }
+                      .cnb-tab-inline {
+                        appearance: none;
+                        border: 2px solid #000;
+                        border-radius: 0;
+                        padding: 4px 10px;
+                        background: #fff;
+                        color: #000;
+                        cursor: pointer;
+                        font-size: 11px;
+                        font-weight: 500;
+                        line-height: 1.1;
+                        transition: all 0.1s ease;
+                      }
+                      .cnb-tab-inline:hover {
+                        background: #000;
+                        color: #fff;
+                      }
+                      .cnb-tab-inline.active {
+                        background: #000;
+                        color: #fff;
+                      }
+                      .cnb-tab-inline:focus {
+                        outline: none;
+                      }
+                    `);
+                  }
+                } catch (_) {}
+                let tabsInline = contentDiv.querySelector('.cnb-clipwin-tabs-inline');
+                if (!tabsInline) {
+                  tabsInline = document.createElement('div');
+                  tabsInline.className = 'cnb-clipwin-tabs-inline';
+                  contentDiv.insertBefore(tabsInline, bodyEl);
+                } else {
+                  tabsInline.innerHTML = '';
+                }
+                h2s.forEach((h, idx) => {
+                  const btn = document.createElement('button');
+                  btn.type = 'button';
+                  btn.textContent = (h.textContent || '').trim() || ('Section ' + (idx + 1));
+                  btn.className = 'cnb-tab-inline';
+                  btn.addEventListener('click', () => {
+                    // 确保窗口使用固定定位而不是transform居中
+                    if (dialog.style.transform && dialog.style.transform !== 'none') {
+                      const rect = dialog.getBoundingClientRect();
+                      dialog.style.left = rect.left + 'px';
+                      dialog.style.top = rect.top + 'px';
+                      dialog.style.transform = 'none';
+                    }
+                    sections.forEach((s, j) => { s.style.display = (j === idx) ? '' : 'none'; });
+                    Array.from(tabsInline.children).forEach((b, i) => {
+                      b.classList.toggle('active', i === idx);
+                    });
+                  });
+                  tabsInline.appendChild(btn);
+                });
+                // 默认激活第一个
+                if (tabsInline.firstElementChild) {
+                  tabsInline.firstElementChild.click();
+                }
+                // 内容首次渲染后，固定窗口位置（避免后续切换tab时从居中动画）
+                if (dialog.style.transform && dialog.style.transform !== 'none') {
+                  const rect = dialog.getBoundingClientRect();
+                  dialog.style.left = rect.left + 'px';
+                  dialog.style.top = rect.top + 'px';
+                  dialog.style.transform = 'none';
+                }
+              }
+            } catch (_) {}
+        }
+
+        // 函数：创建 Issue 标签按钮（显示标题而不是编号）
+        function createIssueTabs() {
+            tabsEl.innerHTML = '';
+
+            // 读取保存的 Issue 标题
+            let issueTitles = {};
+            try {
+                if (typeof GM_getValue === 'function') {
+                    const titles = GM_getValue('cnbClipboardIssueTitles', '{}');
+                    issueTitles = typeof titles === 'object' ? titles : {};
+                }
+            } catch (_) {}
+
+            issueList.forEach((issueNum, index) => {
+                const tab = document.createElement('button');
+                tab.type = 'button';
+                tab.className = 'cnb-clipwin-tab';
+                // 优先显示保存的标题，否则显示编号
+                tab.textContent = issueTitles[String(issueNum)] || issueNum;
+                tab.dataset.issueNum = issueNum;
+                tab.dataset.index = index;
+
+                if (index === currentIssueIndex) {
+                    tab.classList.add('active');
+                }
+
+                tab.addEventListener('click', () => {
+                    // 更新激活状态
+                    currentIssueIndex = index;
+                    Array.from(tabsEl.children).forEach((b, i) => {
+                        b.classList.toggle('active', i === index);
+                    });
+                    // 加载对应 Issue
+                    loadIssue(issueNum, index);
+                });
+
+                tabsEl.appendChild(tab);
+            });
+        }
+
+        // 函数：更新标签文本为 Issue 标题
+        function updateTabTitle(index, title) {
+            const tab = tabsEl.children[index];
+            if (tab && title) {
+                tab.textContent = title;
             }
-        });
+        }
+
+        // 创建标签按钮
+        createIssueTabs();
+
+        // 如果有保存的窗口位置，应用它
+        if (__clipWinPos.left !== null && __clipWinPos.top !== null) {
+            dialog.style.left = __clipWinPos.left + 'px';
+            dialog.style.top = __clipWinPos.top + 'px';
+            dialog.style.transform = 'none';
+        }
+
+        if (issueList.length === 0) {
+            if (bodyEl) bodyEl.textContent = '未配置剪贴板位置';
+            return;
+        }
+
+        // 只在多个 Issue 时显示并初始化标签位置
+        if (issueList.length > 1) {
+            // 初始化标签位置（在窗口左侧，等标签创建完成后）
+            tabsContainer.style.display = 'flex';
+            // 强制重排确保 DOM 完全渲染
+            void tabsContainer.offsetHeight;
+            const rect = dialog.getBoundingClientRect();
+            const tabWidth = tabsContainer.offsetWidth || 80;
+            tabsContainer.style.left = (rect.left - tabWidth) + 'px';
+            tabsContainer.style.top = (rect.top + 29) + 'px';
+            tabsContainer.style.transform = 'none';
+        } else {
+            // 只有一个 Issue 时隐藏标签容器
+            tabsContainer.style.display = 'none';
+        }
+
+        // 加载默认 Issue（第一个）
+        loadIssue(issueList[0], 0);
     }
 
     // 创建Issue
