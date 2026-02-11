@@ -4,7 +4,7 @@
 
 ![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/17.png)
 
-B站演示：https://www.bilibili.com/video/BV1dQyyBhEcg/
+B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 
 ## 功能特点
 
