@@ -1,5 +1,0 @@
-branch:
-  - buttons:
-      - name: 执行
-        event: web_trigger
-        description: "执行"
