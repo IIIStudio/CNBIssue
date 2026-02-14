@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.4.8
+// @version      1.4.9
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -41,6 +41,7 @@
     let __CNB_ISSUE_DIALOG = null, __CNB_ISSUE_OVERLAY = null;
     let __CNB_MO = null;
     let __CNB_UNLOAD_BOUND = false;
+    let __CNB_DOCK_SHOW_TIMER = null;
 
     // 配置信息
     const CONFIG = {
@@ -965,8 +966,32 @@
             trigger.style.height = dockRect.height + 'px';
         }, 0);
 
-        // 鼠标移到触发区域时显示dock
+        // 鼠标移到触发区域时显示dock（延迟显示，避免过于敏感）
         trigger.addEventListener('mouseenter', () => {
+            // 清除之前的定时器
+            if (__CNB_DOCK_SHOW_TIMER) {
+                clearTimeout(__CNB_DOCK_SHOW_TIMER);
+            }
+            // 延迟300ms后显示
+            __CNB_DOCK_SHOW_TIMER = setTimeout(() => {
+                dock.classList.add('cnb-dock--visible');
+            }, 300);
+        });
+
+        // 鼠标离开触发区域时取消显示
+        trigger.addEventListener('mouseleave', () => {
+            if (__CNB_DOCK_SHOW_TIMER) {
+                clearTimeout(__CNB_DOCK_SHOW_TIMER);
+                __CNB_DOCK_SHOW_TIMER = null;
+            }
+        });
+
+        // 鼠标进入dock时立即显示（并取消延迟）
+        dock.addEventListener('mouseenter', () => {
+            if (__CNB_DOCK_SHOW_TIMER) {
+                clearTimeout(__CNB_DOCK_SHOW_TIMER);
+                __CNB_DOCK_SHOW_TIMER = null;
+            }
             dock.classList.add('cnb-dock--visible');
         });
 
@@ -975,7 +1000,19 @@
             dock.classList.remove('cnb-dock--visible');
         });
 
+        // 点击页面其他地方时隐藏dock
+        const handleClickOutside = (e) => {
+            // 如果点击的不是 dock 内部，也不是触发区域，则隐藏
+            if (!dock.contains(e.target) && !trigger.contains(e.target)) {
+                dock.classList.remove('cnb-dock--visible');
+            }
+        };
 
+        // 使用捕获阶段监听，确保能捕获所有点击
+        document.addEventListener('click', handleClickOutside, true);
+
+        // 将点击事件监听器绑定到 dock 元素上，以便后续可以移除
+        dock._clickOutsideHandler = handleClickOutside;
 
         return dock;
     }
