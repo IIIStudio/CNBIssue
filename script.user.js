@@ -833,7 +833,6 @@
                 .replace(/\)/g, '\\)')
                 .replace(/#/g, '\\#')
                 .replace(/\+/g, '\\+')
-                .replace(/-/g, '\\-')
                 .replace(/!/g, '\\!')
                 .replace(/\|/g, '\\|')
                 .replace(/\n\s*\n/g, '\n\n')
