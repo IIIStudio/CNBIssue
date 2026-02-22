@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.4.10
+// @version      1.4.11
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -1536,8 +1536,8 @@ ${escapeHtml(selectedContent)}</textarea>
         // 删除引用块中的空行（> 后面只有空格或空行的）
         markdown = markdown.replace(/^>\s*$/gm, '');
 
-        // 删除代码块后的空行：将空行``` 替换为 ```
-        markdown = markdown.replace(/\n```/g, '```');
+        // 删除代码块结束标记前的空行（只处理 \n``` 这种出现在代码块结束前的情况）
+        markdown = markdown.replace(/\n{2,}```/g, '\n```');
 
         // 多个空行合并为两个
         markdown = markdown.replace(/\n{3,}/g, '\n\n');
@@ -1558,8 +1558,8 @@ ${escapeHtml(selectedContent)}</textarea>
         // 删除引用块中的空行（> 后面只有空格或空行的）
         markdown = markdown.replace(/^>\s*$/gm, '');
 
-        // 删除代码块后的空行：将空行``` 替换为 ```
-        markdown = markdown.replace(/\n```/g, '```');
+        // 删除代码块结束标记前的空行（只处理 \n``` 这种出现在代码块结束前的情况）
+        markdown = markdown.replace(/\n{2,}```/g, '\n```');
 
         // 多个空行合并为两个
         markdown = markdown.replace(/\n{3,}/g, '\n\n');
