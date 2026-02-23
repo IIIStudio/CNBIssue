@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.4.11
+// @version      1.5
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -565,6 +565,12 @@
         .cnb-toggle-switch input:checked + .cnb-toggle-slider:before {
             transform: translateX(22px) !important;
             background-color: #fff !important;
+        }
+
+        /* Issue号输入框样式 - 覆盖全局的 width: 100% */
+        .cnb-issue-dialog input.cnb-issue-number-input {
+            width: 90px !important;
+            margin-left: 8px !important;
         }
 
         /* 开关样式（无文字，仅图形） - 扁平黑白配色 */
@@ -1305,6 +1311,23 @@ ${escapeHtml(selectedContent)}</textarea>
                     </label>
                     <div class="cnb-hint" id="cnb-image-upload-status">检测到 ${uniqueImages.length} 张图片，点击创建时将自动上传</div>
                 </div>` : ''}
+                <div style="display: flex; align-items: center; gap: 20px; margin-top: 10px;">
+                    <div class="cnb-image-upload-toggle" style="margin: 0;">
+                        <label class="cnb-toggle-switch">
+                            <input type="checkbox" id="cnb-edit-toggle">
+                            <span class="cnb-toggle-slider"></span>
+                        </label>
+                        <span style="margin-right: 8px;">修改Issue</span>
+                        <input class="cnb-control cnb-issue-number-input" type="number" id="cnb-issue-number" placeholder="Issue号" style="width: 80px; display: none; margin-left: 8px;">
+                    </div>
+                    <div class="cnb-image-upload-toggle" style="margin: 0;">
+                        <label class="cnb-toggle-switch">
+                            <input type="checkbox" id="cnb-comment-toggle">
+                            <span class="cnb-toggle-slider"></span>
+                        </label>
+                        <span style="margin-right: 8px;">添加评论</span>
+                    </div>
+                </div>
             </div>
             <div>
                 <label>标签:</label>
@@ -1353,6 +1376,9 @@ ${escapeHtml(selectedContent)}</textarea>
         const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
         const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
         const uploadToggle = dialog.querySelector('#cnb-upload-toggle');
+        const editToggle = dialog.querySelector('#cnb-edit-toggle');
+        const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+        const issueNumberInput = dialog.querySelector('#cnb-issue-number');
 
         // 监听上传开关变化，保存状态
         if (uploadToggle) {
@@ -1362,6 +1388,71 @@ ${escapeHtml(selectedContent)}</textarea>
                     GM_setValue('cnbUploadEnabled', CONFIG.uploadEnabled);
                 }
             });
+        }
+
+        // 监听编辑开关变化，显示/隐藏Issue号输入框
+        if (editToggle && issueNumberInput) {
+            editToggle.addEventListener('change', () => {
+                issueNumberInput.style.display = editToggle.checked ? 'inline-block' : 'none';
+                // 如果关闭编辑开关且评论开关已打开，则不允许关闭
+                if (!editToggle.checked && commentToggle.checked) {
+                    editToggle.checked = true;
+                    issueNumberInput.style.display = 'inline-block';
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '添加评论功能必须开启修改Issue',
+                            title: 'CNB Issue工具',
+                            timeout: 2000
+                        });
+                    }
+                }
+                updateButtonText();
+            });
+        }
+
+        // 监听评论开关变化
+        if (commentToggle && editToggle) {
+            commentToggle.addEventListener('change', () => {
+                if (commentToggle.checked) {
+                    // 打开评论开关，必须同时打开编辑开关
+                    if (!editToggle.checked) {
+                        editToggle.checked = true;
+                        if (issueNumberInput) {
+                            issueNumberInput.style.display = 'inline-block';
+                        }
+                    }
+                }
+                updateButtonText();
+            });
+        }
+
+        // 更新按钮文本的函数
+        function updateButtonText() {
+            const isEdit = editToggle ? editToggle.checked : false;
+            const isComment = commentToggle ? commentToggle.checked : false;
+
+            if (isComment) {
+                confirmBtn.textContent = '添加评论';
+            } else if (isEdit) {
+                confirmBtn.textContent = '修改Issue';
+            } else {
+                confirmBtn.textContent = '创建Issue';
+            }
+
+            if (doneBtn) {
+                if (isComment) {
+                    doneBtn.textContent = '添加评论并完成';
+                } else if (isEdit) {
+                    doneBtn.textContent = '修改并完成';
+                } else {
+                    doneBtn.textContent = '创建完成Issue';
+                }
+            }
+        }
+
+        // 监听编辑开关变化
+        if (editToggle) {
+            editToggle.addEventListener('change', updateButtonText);
         }
 
         const closeDialog = () => {
@@ -1376,18 +1467,70 @@ ${escapeHtml(selectedContent)}</textarea>
             const title = dialog.querySelector('#cnb-issue-title').value;
             const content = dialog.querySelector('#cnb-issue-content').value;
             const uploadToggle = dialog.querySelector('#cnb-upload-toggle');
+            const editToggle = dialog.querySelector('#cnb-edit-toggle');
+            const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+            const issueNumberInput = dialog.querySelector('#cnb-issue-number');
+
             const shouldUpload = uploadToggle ? uploadToggle.checked : true;
+            const shouldEdit = editToggle ? editToggle.checked : false;
+            const shouldComment = commentToggle ? commentToggle.checked : false;
+            const issueNumber = issueNumberInput ? issueNumberInput.value.trim() : '';
 
             const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
 
+            // 验证：如果要修改或评论Issue，必须输入Issue号
+            if (shouldEdit || shouldComment) {
+                if (!issueNumber) {
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '请输入Issue号',
+                            title: 'CNB Issue工具',
+                            timeout: 3000
+                        });
+                    }
+                    return;
+                }
+            }
+
             // 禁用按钮并显示加载状态
             confirmBtn.disabled = true;
-            confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建中...';
+            confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>' + (shouldComment ? '添加评论中...' : (shouldEdit ? '修改中...' : '创建中...'));
 
             // 从编辑后的内容中重新检测图片
             const imagesInContent = extractImagesFromMarkdown(content);
 
-            // 如果开启了上传且有图片，先上传图片再创建 Issue
+            // 处理图片上传和Issue操作的逻辑
+            const handleContentReady = (updatedContent) => {
+                if (shouldComment) {
+                    // 只添加评论，不修改Issue
+                    addCommentToIssue(issueNumber, updatedContent, (commentSuccess) => {
+                        closeDialog();
+                    });
+                } else if (shouldEdit) {
+                    // 修改现有Issue
+                    const updateData = { body: updatedContent, title: title };
+                    updateIssue(issueNumber, updateData, (success) => {
+                        if (success) {
+                            closeDialog();
+                        } else {
+                            confirmBtn.disabled = false;
+                            confirmBtn.innerHTML = '修改Issue';
+                        }
+                    });
+                } else {
+                    // 创建新Issue
+                    createIssue(title, updatedContent, labels, (success) => {
+                        if (success) {
+                            closeDialog();
+                        } else {
+                            confirmBtn.disabled = false;
+                            confirmBtn.innerHTML = '创建Issue';
+                        }
+                    });
+                }
+            };
+
+            // 如果开启了上传且有图片，先上传图片
             if (shouldUpload && imagesInContent.length > 0) {
                 const statusEl = dialog.querySelector('#cnb-image-upload-status');
                 if (statusEl) statusEl.textContent = '正在上传图片...';
@@ -1406,25 +1549,11 @@ ${escapeHtml(selectedContent)}</textarea>
                         statusEl.textContent = '图片上传完成';
                     }
 
-                    createIssue(title, updatedContent, labels, (success) => {
-                        if (success) {
-                            closeDialog();
-                        } else {
-                            confirmBtn.disabled = false;
-                            confirmBtn.innerHTML = '创建Issue';
-                        }
-                    });
+                    handleContentReady(updatedContent);
                 });
             } else {
-                // 不上传图片或没有图片，直接创建 Issue
-                createIssue(title, content, labels, (success) => {
-                    if (success) {
-                        closeDialog();
-                    } else {
-                        confirmBtn.disabled = false;
-                        confirmBtn.innerHTML = '创建Issue';
-                    }
-                });
+                // 不上传图片或没有图片，直接处理Issue操作
+                handleContentReady(content);
             }
         });
 
@@ -1433,45 +1562,111 @@ ${escapeHtml(selectedContent)}</textarea>
                 const title = dialog.querySelector('#cnb-issue-title').value;
                 const content = dialog.querySelector('#cnb-issue-content').value;
                 const uploadToggle = dialog.querySelector('#cnb-upload-toggle');
+                const editToggle = dialog.querySelector('#cnb-edit-toggle');
+                const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+                const issueNumberInput = dialog.querySelector('#cnb-issue-number');
+
                 const shouldUpload = uploadToggle ? uploadToggle.checked : true;
+                const shouldEdit = editToggle ? editToggle.checked : false;
+                const shouldComment = commentToggle ? commentToggle.checked : false;
+                const issueNumber = issueNumberInput ? issueNumberInput.value.trim() : '';
+
                 const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
+
+                // 验证：如果要修改或评论Issue，必须输入Issue号
+                if (shouldEdit || shouldComment) {
+                    if (!issueNumber) {
+                        if (typeof GM_notification === 'function') {
+                            GM_notification({
+                                text: '请输入Issue号',
+                                title: 'CNB Issue工具',
+                                timeout: 3000
+                            });
+                        }
+                        return;
+                    }
+                }
 
                 doneBtn.disabled = true;
                 confirmBtn.disabled = true;
-                doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建并完成中...';
+                doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>处理中...';
 
-                const afterIssueCreated = (updatedContent) => {
-                    createIssue(title, updatedContent, labels, (success, issueId) => {
-                        if (success && issueId != null) {
-                            closeIssue(issueId, 'completed', (ok) => {
-                                if (!ok) {
-                                    doneBtn.disabled = false;
-                                    confirmBtn.disabled = false;
-                                    doneBtn.innerHTML = '创建完成Issue';
-                                    return;
-                                }
+                const handleContentReady = (updatedContent) => {
+                    if (shouldComment) {
+                        // 只添加评论，然后关闭Issue
+                        addCommentToIssue(issueNumber, updatedContent, (commentSuccess) => {
+                            if (commentSuccess) {
+                                closeIssue(issueNumber, 'completed', (ok) => {
+                                    if (typeof GM_notification === 'function') {
+                                        GM_notification({
+                                            text: '评论已添加，Issue已标记为已完成',
+                                            title: 'CNB Issue工具',
+                                            timeout: 3000
+                                        });
+                                    }
+                                    if (document.body.contains(overlay)) document.body.removeChild(overlay);
+                                    if (document.body.contains(dialog)) document.body.removeChild(dialog);
+                                });
+                            } else {
+                                doneBtn.disabled = false;
+                                confirmBtn.disabled = false;
+                                doneBtn.innerHTML = '添加评论并完成';
+                            }
+                        });
+                    } else if (shouldEdit) {
+                        // 修改现有Issue并完成
+                        const updateData = { body: updatedContent, title: title, state: 'closed', state_reason: 'completed' };
+                        updateIssue(issueNumber, updateData, (success) => {
+                            if (success) {
                                 if (typeof GM_notification === 'function') {
                                     GM_notification({
-                                        text: 'Issue已标记为已完成（closed: completed）',
+                                        text: 'Issue已修改并完成',
                                         title: 'CNB Issue工具',
                                         timeout: 3000
                                     });
                                 }
                                 if (document.body.contains(overlay)) document.body.removeChild(overlay);
                                 if (document.body.contains(dialog)) document.body.removeChild(dialog);
-                            });
-                        } else {
-                            doneBtn.disabled = false;
-                            confirmBtn.disabled = false;
-                            doneBtn.innerHTML = '创建完成Issue';
-                        }
-                    });
+                            } else {
+                                doneBtn.disabled = false;
+                                confirmBtn.disabled = false;
+                                doneBtn.innerHTML = '修改并完成';
+                            }
+                        });
+                    } else {
+                        // 创建新Issue并完成
+                        createIssue(title, updatedContent, labels, (success, issueId) => {
+                            if (success && issueId != null) {
+                                closeIssue(issueId, 'completed', (ok) => {
+                                    if (!ok) {
+                                        doneBtn.disabled = false;
+                                        confirmBtn.disabled = false;
+                                        doneBtn.innerHTML = '创建完成Issue';
+                                        return;
+                                    }
+                                    if (typeof GM_notification === 'function') {
+                                        GM_notification({
+                                            text: 'Issue已标记为已完成（closed: completed）',
+                                            title: 'CNB Issue工具',
+                                            timeout: 3000
+                                        });
+                                    }
+                                    if (document.body.contains(overlay)) document.body.removeChild(overlay);
+                                    if (document.body.contains(dialog)) document.body.removeChild(dialog);
+                                });
+                            } else {
+                                doneBtn.disabled = false;
+                                confirmBtn.disabled = false;
+                                doneBtn.innerHTML = '创建完成Issue';
+                            }
+                        });
+                    }
                 };
 
                 // 从编辑后的内容中重新检测图片
                 const imagesInContent = extractImagesFromMarkdown(content);
 
-                // 如果开启了上传且有图片，先上传图片再创建 Issue
+                // 如果开启了上传且有图片，先上传图片
                 if (shouldUpload && imagesInContent.length > 0) {
                     const statusEl = dialog.querySelector('#cnb-image-upload-status');
                     if (statusEl) statusEl.textContent = '正在上传图片...';
@@ -1490,10 +1685,10 @@ ${escapeHtml(selectedContent)}</textarea>
                             statusEl.textContent = '图片上传完成';
                         }
 
-                        afterIssueCreated(updatedContent);
+                        handleContentReady(updatedContent);
                     });
                 } else {
-                    afterIssueCreated(content);
+                    handleContentReady(content);
                 }
             });
         }
@@ -1718,6 +1913,23 @@ ${escapeHtml(selectedContent)}</textarea>
                 <label>标签:</label>
                 <div id="cnb-issue-tags"></div>
             </div>
+            <div style="display: flex; align-items: center; gap: 20px; margin-top: 10px;">
+                <div class="cnb-image-upload-toggle" style="margin: 0;">
+                    <label class="cnb-toggle-switch">
+                        <input type="checkbox" id="cnb-edit-toggle">
+                        <span class="cnb-toggle-slider"></span>
+                    </label>
+                    <span style="margin-right: 8px;">修改Issue</span>
+                    <input class="cnb-control cnb-issue-number-input" type="number" id="cnb-issue-number" placeholder="Issue号" style="width: 80px; display: none; margin-left: 8px;">
+                </div>
+                <div class="cnb-image-upload-toggle" style="margin: 0;">
+                    <label class="cnb-toggle-switch">
+                        <input type="checkbox" id="cnb-comment-toggle">
+                        <span class="cnb-toggle-slider"></span>
+                    </label>
+                    <span style="margin-right: 8px;">添加评论</span>
+                </div>
+            </div>
             <div class="cnb-issue-dialog-buttons">
                 <button class="cnb-issue-btn-cancel">取消</button>
                 <button class="cnb-issue-btn-done">创建完成Issue</button>
@@ -1760,6 +1972,69 @@ ${escapeHtml(selectedContent)}</textarea>
         const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
         const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
         const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
+        const editToggle = dialog.querySelector('#cnb-edit-toggle');
+        const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+        const issueNumberInput = dialog.querySelector('#cnb-issue-number');
+
+        // 监听编辑开关变化，显示/隐藏Issue号输入框
+        if (editToggle && issueNumberInput) {
+            editToggle.addEventListener('change', () => {
+                issueNumberInput.style.display = editToggle.checked ? 'inline-block' : 'none';
+                // 如果关闭编辑开关且评论开关已打开，则不允许关闭
+                if (!editToggle.checked && commentToggle.checked) {
+                    editToggle.checked = true;
+                    issueNumberInput.style.display = 'inline-block';
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '添加评论功能必须开启修改Issue',
+                            title: 'CNB Issue工具',
+                            timeout: 2000
+                        });
+                    }
+                }
+                updateButtonText();
+            });
+        }
+
+        // 监听评论开关变化
+        if (commentToggle && editToggle) {
+            commentToggle.addEventListener('change', () => {
+                if (commentToggle.checked) {
+                    // 打开评论开关，必须同时打开编辑开关
+                    if (!editToggle.checked) {
+                        editToggle.checked = true;
+                        if (issueNumberInput) {
+                            issueNumberInput.style.display = 'inline-block';
+                        }
+                    }
+                }
+                updateButtonText();
+            });
+        }
+
+        // 更新按钮文本的函数
+        function updateButtonText() {
+            const isEdit = editToggle ? editToggle.checked : false;
+            const isComment = commentToggle ? commentToggle.checked : false;
+
+            if (isComment) {
+                confirmBtn.textContent = '添加评论';
+            } else if (isEdit) {
+                confirmBtn.textContent = '修改Issue';
+            } else {
+                confirmBtn.textContent = '创建Issue';
+            }
+
+            if (doneBtn) {
+                if (isComment) {
+                    doneBtn.textContent = '添加评论并完成';
+                } else if (isEdit) {
+                    doneBtn.textContent = '修改并完成';
+                } else {
+                    doneBtn.textContent = '创建完成Issue';
+                }
+            }
+        }
 
         const closeDialog = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
@@ -1773,11 +2048,33 @@ ${escapeHtml(selectedContent)}</textarea>
         doneBtn.addEventListener('click', async () => {
             const title = dialog.querySelector('#cnb-issue-title').value;
             const content = dialog.querySelector('#cnb-issue-content').value;
+            const editToggle = dialog.querySelector('#cnb-edit-toggle');
+            const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+            const issueNumberInput = dialog.querySelector('#cnb-issue-number');
+
+            const shouldEdit = editToggle ? editToggle.checked : false;
+            const shouldComment = commentToggle ? commentToggle.checked : false;
+            const issueNumber = issueNumberInput ? issueNumberInput.value.trim() : '';
+
             const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
+
+            // 验证：如果要修改或评论Issue，必须输入Issue号
+            if (shouldEdit || shouldComment) {
+                if (!issueNumber) {
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '请输入Issue号',
+                            title: 'CNB Issue工具',
+                            timeout: 3000
+                        });
+                    }
+                    return;
+                }
+            }
 
             doneBtn.disabled = true;
             confirmBtn.disabled = true;
-            doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建并完成中...';
+            doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>处理中...';
 
             // 生成截图
             const statusEl = dialog.querySelector('#cnb-capture-status');
@@ -1952,34 +2249,88 @@ ${escapeHtml(selectedContent)}</textarea>
                         // 更新内容为图片
                         const updatedContent = content + '\n\n' + `![微博截图](${imageUrl})`;
 
-                        // 创建并完成 Issue
-                        if (statusEl) statusEl.textContent = '正在创建Issue...';
-                        doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建中...';
+                        // 创建并完成 Issue 或修改 Issue 或添加评论
+                        if (statusEl) {
+                            if (shouldComment) {
+                                statusEl.textContent = '正在添加评论...';
+                            } else if (shouldEdit) {
+                                statusEl.textContent = '正在修改Issue...';
+                            } else {
+                                statusEl.textContent = '正在创建Issue...';
+                            }
+                        }
+                        doneBtn.innerHTML = '<div class="cnb-issue-loading"></div>' + (shouldComment ? '添加评论中...' : (shouldEdit ? '修改中...' : '创建中...'));
 
-                        createIssue(title, updatedContent, labels, (success, issueId) => {
-                            if (success && issueId != null) {
-                                closeIssue(issueId, 'completed', (ok) => {
-                                    if (!ok) {
+                        const handleIssueOperation = () => {
+                            if (shouldComment) {
+                                // 只添加评论，然后关闭Issue
+                                addCommentToIssue(issueNumber, updatedContent, (commentSuccess) => {
+                                    if (commentSuccess) {
+                                        closeIssue(issueNumber, 'completed', (ok) => {
+                                            if (typeof GM_notification === 'function') {
+                                                GM_notification({
+                                                    text: '评论已添加，Issue已标记为已完成',
+                                                    title: 'CNB Issue工具',
+                                                    timeout: 3000
+                                                });
+                                            }
+                                            closeDialog();
+                                        });
+                                    } else {
+                                        doneBtn.disabled = false;
+                                        confirmBtn.disabled = false;
+                                        doneBtn.innerHTML = '添加评论并完成';
+                                    }
+                                });
+                            } else if (shouldEdit) {
+                                // 修改现有Issue
+                                const updateData = { body: updatedContent, title: title, state: 'closed', state_reason: 'completed' };
+                                updateIssue(issueNumber, updateData, (success) => {
+                                    if (success) {
+                                        if (typeof GM_notification === 'function') {
+                                            GM_notification({
+                                                text: 'Issue已修改并完成',
+                                                title: 'CNB Issue工具',
+                                                timeout: 3000
+                                            });
+                                        }
+                                        closeDialog();
+                                    } else {
+                                        doneBtn.disabled = false;
+                                        confirmBtn.disabled = false;
+                                        doneBtn.innerHTML = '修改并完成';
+                                    }
+                                });
+                            } else {
+                                // 创建新Issue
+                                createIssue(title, updatedContent, labels, (success, issueId) => {
+                                    if (success && issueId != null) {
+                                        closeIssue(issueId, 'completed', (ok) => {
+                                            if (!ok) {
+                                                doneBtn.disabled = false;
+                                                confirmBtn.disabled = false;
+                                                doneBtn.innerHTML = '创建完成Issue';
+                                                return;
+                                            }
+                                            if (typeof GM_notification === 'function') {
+                                                GM_notification({
+                                                    text: 'Issue已标记为已完成（closed: completed）',
+                                                    title: 'CNB Issue工具',
+                                                    timeout: 3000
+                                                });
+                                            }
+                                            closeDialog();
+                                        });
+                                    } else {
                                         doneBtn.disabled = false;
                                         confirmBtn.disabled = false;
                                         doneBtn.innerHTML = '创建完成Issue';
-                                        return;
                                     }
-                                    if (typeof GM_notification === 'function') {
-                                        GM_notification({
-                                            text: 'Issue已标记为已完成（closed: completed）',
-                                            title: 'CNB Issue工具',
-                                            timeout: 3000
-                                        });
-                                    }
-                                    closeDialog();
                                 });
-                            } else {
-                                doneBtn.disabled = false;
-                                confirmBtn.disabled = false;
-                                doneBtn.innerHTML = '创建完成Issue';
                             }
-                        });
+                        };
+
+                        handleIssueOperation();
                     });
                 });
             } catch (error) {
@@ -2001,7 +2352,29 @@ ${escapeHtml(selectedContent)}</textarea>
         confirmBtn.addEventListener('click', async () => {
             const title = dialog.querySelector('#cnb-issue-title').value;
             const content = dialog.querySelector('#cnb-issue-content').value;
+            const editToggle = dialog.querySelector('#cnb-edit-toggle');
+            const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+            const issueNumberInput = dialog.querySelector('#cnb-issue-number');
+
+            const shouldEdit = editToggle ? editToggle.checked : false;
+            const shouldComment = commentToggle ? commentToggle.checked : false;
+            const issueNumber = issueNumberInput ? issueNumberInput.value.trim() : '';
+
             const labels = Array.isArray(selectedTags) ? selectedTags.slice() : [];
+
+            // 验证：如果要修改或评论Issue，必须输入Issue号
+            if (shouldEdit || shouldComment) {
+                if (!issueNumber) {
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '请输入Issue号',
+                            title: 'CNB Issue工具',
+                            timeout: 3000
+                        });
+                    }
+                    return;
+                }
+            }
 
             confirmBtn.disabled = true;
             confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>生成截图中...';
@@ -2174,18 +2547,49 @@ ${escapeHtml(selectedContent)}</textarea>
                         // 更新内容为图片
                         const updatedContent = content + '\n\n' + `![微博截图](${imageUrl})`;
 
-                        // 创建 Issue
-                        if (statusEl) statusEl.textContent = '正在创建Issue...';
-                        confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>创建中...';
-
-                        createIssue(title, updatedContent, labels, (success) => {
-                            if (success) {
-                                closeDialog();
+                        // 创建 Issue 或修改 Issue 或添加评论
+                        if (statusEl) {
+                            if (shouldComment) {
+                                statusEl.textContent = '正在添加评论...';
+                            } else if (shouldEdit) {
+                                statusEl.textContent = '正在修改Issue...';
                             } else {
-                                confirmBtn.disabled = false;
-                                confirmBtn.innerHTML = '创建Issue';
+                                statusEl.textContent = '正在创建Issue...';
                             }
-                        });
+                        }
+                        confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>' + (shouldComment ? '添加评论中...' : (shouldEdit ? '修改中...' : '创建中...'));
+
+                        const handleIssueOperation = () => {
+                            if (shouldComment) {
+                                // 只添加评论，不修改Issue
+                                addCommentToIssue(issueNumber, updatedContent, (commentSuccess) => {
+                                    closeDialog();
+                                });
+                            } else if (shouldEdit) {
+                                // 修改现有Issue
+                                const updateData = { body: updatedContent, title: title };
+                                updateIssue(issueNumber, updateData, (success) => {
+                                    if (success) {
+                                        closeDialog();
+                                    } else {
+                                        confirmBtn.disabled = false;
+                                        confirmBtn.innerHTML = '修改Issue';
+                                    }
+                                });
+                            } else {
+                                // 创建新Issue
+                                createIssue(title, updatedContent, labels, (success) => {
+                                    if (success) {
+                                        closeDialog();
+                                    } else {
+                                        confirmBtn.disabled = false;
+                                        confirmBtn.innerHTML = '创建Issue';
+                                    }
+                                });
+                            }
+                        };
+
+                        handleIssueOperation();
                     });
                 });
             } catch (error) {
@@ -4136,6 +4540,126 @@ ${md}`, 'text');
                 if (typeof GM_notification === 'function') {
                     GM_notification({
                         text: `网络请求失败（关闭Issue）`,
+                        title: 'CNB Issue工具',
+                        timeout: 5000
+                    });
+                }
+                if (typeof callback === 'function') callback(false);
+            }
+        });
+    }
+
+    // 更新Issue
+    function updateIssue(issueNumber, data, callback) {
+        if (!CONFIG.repoPath || !CONFIG.accessToken) {
+            if (typeof GM_notification === 'function') {
+                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
+            }
+            if (typeof callback === 'function') callback(false);
+            return;
+        }
+
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}`;
+        GM_xmlhttpRequest({
+            method: 'PATCH',
+            url,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `${CONFIG.accessToken}`,
+                'Accept': 'application/vnd.cnb.api+json'
+            },
+            data: JSON.stringify(data),
+            responseType: 'json',
+            onload: function(res) {
+                if (res.status >= 200 && res.status < 300) {
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: `Issue #${issueNumber} 更新成功！`,
+                            title: 'CNB Issue工具',
+                            timeout: 3000
+                        });
+                    }
+                    if (typeof callback === 'function') callback(true);
+                } else {
+                    let msg = `HTTP ${res.status}`;
+                    try {
+                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
+                        if (err?.message) msg = err.message;
+                    } catch (_) {}
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: `更新失败：${msg}`,
+                            title: 'CNB Issue工具',
+                            timeout: 5000
+                        });
+                    }
+                    if (typeof callback === 'function') callback(false);
+                }
+            },
+            onerror: function() {
+                if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        text: `网络请求失败（更新Issue）`,
+                        title: 'CNB Issue工具',
+                        timeout: 5000
+                    });
+                }
+                if (typeof callback === 'function') callback(false);
+            }
+        });
+    }
+
+    // 添加评论到Issue
+    function addCommentToIssue(issueNumber, body, callback) {
+        if (!CONFIG.repoPath || !CONFIG.accessToken) {
+            if (typeof GM_notification === 'function') {
+                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
+            }
+            if (typeof callback === 'function') callback(false);
+            return;
+        }
+
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}/comments`;
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `${CONFIG.accessToken}`,
+                'Accept': 'application/vnd.cnb.api+json'
+            },
+            data: JSON.stringify({ body }),
+            responseType: 'json',
+            onload: function(res) {
+                if (res.status >= 200 && res.status < 300) {
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: `评论添加成功！`,
+                            title: 'CNB Issue工具',
+                            timeout: 3000
+                        });
+                    }
+                    if (typeof callback === 'function') callback(true);
+                } else {
+                    let msg = `HTTP ${res.status}`;
+                    try {
+                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
+                        if (err?.message) msg = err.message;
+                    } catch (_) {}
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: `添加评论失败：${msg}`,
+                            title: 'CNB Issue工具',
+                            timeout: 5000
+                        });
+                    }
+                    if (typeof callback === 'function') callback(false);
+                }
+            },
+            onerror: function() {
+                if (typeof GM_notification === 'function') {
+                    GM_notification({
+                        text: `网络请求失败（添加评论）`,
                         title: 'CNB Issue工具',
                         timeout: 5000
                     });
