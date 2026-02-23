@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5
+// @version      1.5.1
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -83,20 +83,20 @@
             transform: none;
         }
         .cnb-issue-dialog {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: #fff;
-            border: 2px solid #000;
-            border-radius: 0;
-            padding: 16px;
-            z-index: 10001;
-            box-shadow: 4px 4px 0 #000;
-            min-width: 500px;
-            max-width: 90vw;
-            max-height: 80vh;
-            overflow: auto;
+            position: fixed !important;
+            top: 50% !important;
+            left: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            background: #fff !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
+            padding: 16px !important;
+            z-index: 10001 !important;
+            box-shadow: 4px 4px 0 #000 !important;
+            min-width: 500px !important;
+            max-width: 90vw !important;
+            max-height: 80vh !important;
+            overflow: auto !important;
         }
         .cnb-issue-dialog h3 {
             margin: 0 0 12px 0;
@@ -338,6 +338,15 @@
 
     /* 强制隔离并统一控件样式，避免继承站点样式 - 扁平黑白配色 */
     GM_addStyle(`
+        /* 对话框内全局样式重置 */
+        .cnb-issue-dialog,
+        .cnb-issue-dialog * {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+            text-align: left !important;
+            letter-spacing: normal !important;
+            word-spacing: normal !important;
+        }
+
         .cnb-issue-dialog input.cnb-control,
         .cnb-issue-dialog textarea.cnb-control {
             box-sizing: border-box !important;
@@ -509,6 +518,12 @@
         .cnb-hint {
             color: #666 !important;
             font-size: 12px !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+            font-weight: 400 !important;
+            line-height: 1.4 !important;
+            text-align: left !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
 
         /* 图片上传开关容器 */
@@ -571,6 +586,7 @@
         .cnb-issue-dialog input.cnb-issue-number-input {
             width: 90px !important;
             margin-left: 8px !important;
+            height: 28px !important;
         }
 
         /* 开关样式（无文字，仅图形） - 扁平黑白配色 */
@@ -1317,7 +1333,7 @@ ${escapeHtml(selectedContent)}</textarea>
                             <input type="checkbox" id="cnb-edit-toggle">
                             <span class="cnb-toggle-slider"></span>
                         </label>
-                        <span style="margin-right: 8px;">修改Issue</span>
+                        <span class="cnb-hint" style="margin-right: 8px;">修改Issue</span>
                         <input class="cnb-control cnb-issue-number-input" type="number" id="cnb-issue-number" placeholder="Issue号" style="width: 80px; display: none; margin-left: 8px;">
                     </div>
                     <div class="cnb-image-upload-toggle" style="margin: 0;">
@@ -1325,7 +1341,7 @@ ${escapeHtml(selectedContent)}</textarea>
                             <input type="checkbox" id="cnb-comment-toggle">
                             <span class="cnb-toggle-slider"></span>
                         </label>
-                        <span style="margin-right: 8px;">添加评论</span>
+                        <span class="cnb-hint" style="margin-right: 8px;">添加评论</span>
                     </div>
                 </div>
             </div>
@@ -1407,6 +1423,40 @@ ${escapeHtml(selectedContent)}</textarea>
                     }
                 }
                 updateButtonText();
+            });
+
+            // 监听Issue号输入框失去焦点时，获取并勾选对应的标签
+            issueNumberInput.addEventListener('blur', () => {
+                const issueNum = issueNumberInput.value.trim();
+                if (!issueNum) {
+                    // 清空Issue号时，取消所有标签勾选
+                    selectedTags = [];
+                    const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                    tagBtns.forEach(btn => btn.classList.remove('active'));
+                    return;
+                }
+                // 获取Issue的标签
+                fetchIssueLabels(issueNum, (labels, error) => {
+                    if (error) {
+                        console.error('获取标签失败:', error);
+                        return;
+                    }
+                    // 提取标签名称
+                    const labelNames = labels.map(l => l.name || l);
+                    // 清空当前选择
+                    selectedTags = [];
+                    const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                    tagBtns.forEach(btn => {
+                        const tagName = btn.textContent;
+                        // 如果标签在Issue的标签列表中，则勾选
+                        if (labelNames.includes(tagName)) {
+                            btn.classList.add('active');
+                            selectedTags.push(tagName);
+                        } else {
+                            btn.classList.remove('active');
+                        }
+                    });
+                });
             });
         }
 
@@ -1509,7 +1559,7 @@ ${escapeHtml(selectedContent)}</textarea>
                 } else if (shouldEdit) {
                     // 修改现有Issue
                     const updateData = { body: updatedContent, title: title };
-                    updateIssue(issueNumber, updateData, (success) => {
+                    updateIssue(issueNumber, updateData, labels, (success) => {
                         if (success) {
                             closeDialog();
                         } else {
@@ -1616,7 +1666,7 @@ ${escapeHtml(selectedContent)}</textarea>
                     } else if (shouldEdit) {
                         // 修改现有Issue并完成
                         const updateData = { body: updatedContent, title: title, state: 'closed', state_reason: 'completed' };
-                        updateIssue(issueNumber, updateData, (success) => {
+                        updateIssue(issueNumber, updateData, labels, (success) => {
                             if (success) {
                                 if (typeof GM_notification === 'function') {
                                     GM_notification({
@@ -1919,7 +1969,7 @@ ${escapeHtml(selectedContent)}</textarea>
                         <input type="checkbox" id="cnb-edit-toggle">
                         <span class="cnb-toggle-slider"></span>
                     </label>
-                    <span style="margin-right: 8px;">修改Issue</span>
+                    <span class="cnb-hint" style="margin-right: 8px;">修改Issue</span>
                     <input class="cnb-control cnb-issue-number-input" type="number" id="cnb-issue-number" placeholder="Issue号" style="width: 80px; display: none; margin-left: 8px;">
                 </div>
                 <div class="cnb-image-upload-toggle" style="margin: 0;">
@@ -1927,7 +1977,7 @@ ${escapeHtml(selectedContent)}</textarea>
                         <input type="checkbox" id="cnb-comment-toggle">
                         <span class="cnb-toggle-slider"></span>
                     </label>
-                    <span style="margin-right: 8px;">添加评论</span>
+                    <span class="cnb-hint" style="margin-right: 8px;">添加评论</span>
                 </div>
             </div>
             <div class="cnb-issue-dialog-buttons">
@@ -1993,6 +2043,40 @@ ${escapeHtml(selectedContent)}</textarea>
                     }
                 }
                 updateButtonText();
+            });
+
+            // 监听Issue号输入框失去焦点时，获取并勾选对应的标签
+            issueNumberInput.addEventListener('blur', () => {
+                const issueNum = issueNumberInput.value.trim();
+                if (!issueNum) {
+                    // 清空Issue号时，取消所有标签勾选
+                    selectedTags = [];
+                    const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                    tagBtns.forEach(btn => btn.classList.remove('active'));
+                    return;
+                }
+                // 获取Issue的标签
+                fetchIssueLabels(issueNum, (labels, error) => {
+                    if (error) {
+                        console.error('获取标签失败:', error);
+                        return;
+                    }
+                    // 提取标签名称
+                    const labelNames = labels.map(l => l.name || l);
+                    // 清空当前选择
+                    selectedTags = [];
+                    const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                    tagBtns.forEach(btn => {
+                        const tagName = btn.textContent;
+                        // 如果标签在Issue的标签列表中，则勾选
+                        if (labelNames.includes(tagName)) {
+                            btn.classList.add('active');
+                            selectedTags.push(tagName);
+                        } else {
+                            btn.classList.remove('active');
+                        }
+                    });
+                });
             });
         }
 
@@ -2285,7 +2369,7 @@ ${escapeHtml(selectedContent)}</textarea>
                             } else if (shouldEdit) {
                                 // 修改现有Issue
                                 const updateData = { body: updatedContent, title: title, state: 'closed', state_reason: 'completed' };
-                                updateIssue(issueNumber, updateData, (success) => {
+                                updateIssue(issueNumber, updateData, labels, (success) => {
                                     if (success) {
                                         if (typeof GM_notification === 'function') {
                                             GM_notification({
@@ -2568,7 +2652,7 @@ ${escapeHtml(selectedContent)}</textarea>
                             } else if (shouldEdit) {
                                 // 修改现有Issue
                                 const updateData = { body: updatedContent, title: title };
-                                updateIssue(issueNumber, updateData, (success) => {
+                                updateIssue(issueNumber, updateData, labels, (success) => {
                                     if (success) {
                                         closeDialog();
                                     } else {
@@ -3216,7 +3300,7 @@ ${escapeHtml(selectedContent)}</textarea>
                 a.target = '_blank';
                 a.rel = 'noopener noreferrer';
                 const fullTitle = String(title || '');
-                const truncated = fullTitle.length > 40 ? fullTitle.slice(0, 40) + '…' : fullTitle;
+                const truncated = fullTitle.length > 30 ? fullTitle.slice(0, 30) + '…' : fullTitle;
                 a.textContent = truncated;
                 a.title = fullTitle;
                 a.style.cssText = 'color:#000;text-decoration:none;word-break:break-all;font-weight:500;';
@@ -4550,7 +4634,7 @@ ${md}`, 'text');
     }
 
     // 更新Issue
-    function updateIssue(issueNumber, data, callback) {
+    function updateIssue(issueNumber, data, labels = [], callback) {
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
             if (typeof GM_notification === 'function') {
                 GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
@@ -4560,6 +4644,84 @@ ${md}`, 'text');
         }
 
         const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}`;
+        const labelsUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}/labels`;
+
+        // 处理标签的函数
+        const handleLabels = (afterUpdateCallback) => {
+            // 判断是否选择了标签，如果没有选择标签，则跳过标签处理
+            if (!Array.isArray(labels) || labels.length === 0) {
+                afterUpdateCallback(true);
+                return;
+            }
+
+            // 先删除所有标签（如果有）
+            const deleteLabels = () => {
+                return new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'DELETE',
+                        url: labelsUrl,
+                        headers: {
+                            'Authorization': `${CONFIG.accessToken}`,
+                            'Accept': 'application/vnd.cnb.api+json'
+                        },
+                        responseType: 'json',
+                        onload: function(res) {
+                            // 无论删除成功与否，都继续添加标签（可能本来就没有标签）
+                            resolve();
+                        },
+                        onerror: function() {
+                            // 即使删除失败也继续
+                            resolve();
+                        }
+                    });
+                });
+            };
+
+            // 添加新标签
+            const addLabels = () => {
+                return new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'PUT',
+                        url: labelsUrl,
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `${CONFIG.accessToken}`,
+                            'Accept': 'application/vnd.cnb.api+json'
+                        },
+                        data: JSON.stringify({ labels }),
+                        responseType: 'json',
+                        onload: function(res) {
+                            if (res.status >= 200 && res.status < 300) {
+                                resolve();
+                            } else {
+                                reject(`HTTP ${res.status}`);
+                            }
+                        },
+                        onerror: function() {
+                            reject('网络错误');
+                        }
+                    });
+                });
+            };
+
+            // 执行删除和添加标签
+            deleteLabels()
+                .then(() => addLabels())
+                .then(() => afterUpdateCallback(true))
+                .catch((err) => {
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: `更新标签失败：${err}`,
+                            title: 'CNB Issue工具',
+                            timeout: 5000
+                        });
+                    }
+                    // 标签更新失败，但Issue已更新，仍然返回成功
+                    afterUpdateCallback(true);
+                });
+        };
+
+        // 先更新Issue的title和body
         GM_xmlhttpRequest({
             method: 'PATCH',
             url,
@@ -4572,14 +4734,17 @@ ${md}`, 'text');
             responseType: 'json',
             onload: function(res) {
                 if (res.status >= 200 && res.status < 300) {
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: `Issue #${issueNumber} 更新成功！`,
-                            title: 'CNB Issue工具',
-                            timeout: 3000
-                        });
-                    }
-                    if (typeof callback === 'function') callback(true);
+                    // Issue更新成功，处理标签
+                    handleLabels((labelSuccess) => {
+                        if (typeof GM_notification === 'function') {
+                            GM_notification({
+                                text: `Issue #${issueNumber} 更新成功！`,
+                                title: 'CNB Issue工具',
+                                timeout: 3000
+                            });
+                        }
+                        if (typeof callback === 'function') callback(true);
+                    });
                 } else {
                     let msg = `HTTP ${res.status}`;
                     try {
@@ -4605,6 +4770,50 @@ ${md}`, 'text');
                     });
                 }
                 if (typeof callback === 'function') callback(false);
+            }
+        });
+    }
+
+    // 获取Issue的标签
+    function fetchIssueLabels(issueNumber, callback) {
+        if (!CONFIG.repoPath || !CONFIG.accessToken) {
+            if (typeof callback === 'function') callback([], '请先配置仓库路径与访问令牌');
+            return;
+        }
+
+        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}/labels`;
+        GM_xmlhttpRequest({
+            method: 'GET',
+            url,
+            headers: {
+                'Authorization': `${CONFIG.accessToken}`,
+                'Accept': 'application/vnd.cnb.api+json'
+            },
+            responseType: 'json',
+            onload: function(res) {
+                if (res.status >= 200 && res.status < 300) {
+                    let labels = [];
+                    try {
+                        const data = typeof res.response === 'object' && res.response !== null
+                            ? res.response
+                            : JSON.parse(res.responseText || '{}');
+                        // CNB API 返回的标签可能是数组
+                        labels = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+                    } catch (e) {
+                        console.error('解析标签数据失败:', e);
+                    }
+                    if (typeof callback === 'function') callback(labels, null);
+                } else {
+                    let msg = `HTTP ${res.status}`;
+                    try {
+                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
+                        if (err?.message) msg = err.message;
+                    } catch (_) {}
+                    if (typeof callback === 'function') callback([], msg);
+                }
+            },
+            onerror: function() {
+                if (typeof callback === 'function') callback([], '网络错误');
             }
         });
     }
