@@ -1403,10 +1403,10 @@ ${escapeHtml(selectedContent)}</textarea>
                 }
             } catch (_) {}
 
-            // 解析收藏配置: 1|收藏,5|阅读
+            // 解析收藏配置: 1|收藏,5|阅读 或 1|收藏，5|阅读（支持中文逗号）
             const favItems = [];
             if (favConfig) {
-                const parts = favConfig.split(',').map(s => s.trim()).filter(Boolean);
+                const parts = favConfig.split(/[,，]/).map(s => s.trim()).filter(Boolean);
                 parts.forEach(part => {
                     const match = part.match(/^(\d+)\|(.+)$/);
                     if (match) {
@@ -1418,11 +1418,12 @@ ${escapeHtml(selectedContent)}</textarea>
                 });
             }
 
+            // 如果收藏为空，隐藏整个收藏区域
             if (favItems.length === 0) {
-                const hint = document.createElement('div');
-                hint.className = 'cnb-hint';
-                hint.textContent = '在设置中配置收藏后可在此选择';
-                favContainer.appendChild(hint);
+                const favSection = favContainer.parentElement;
+                if (favSection) {
+                    favSection.style.display = 'none';
+                }
             } else {
                 favItems.forEach(item => {
                     const btnFav = document.createElement('button');
@@ -1430,24 +1431,69 @@ ${escapeHtml(selectedContent)}</textarea>
                     btnFav.className = 'cnb-tag-btn';
                     btnFav.textContent = item.name;
                     btnFav.addEventListener('click', () => {
-                        // 先移除所有收藏按钮的active状态
-                        const allFavBtns = favContainer.querySelectorAll('.cnb-tag-btn');
-                        allFavBtns.forEach(btn => btn.classList.remove('active'));
-                        // 为当前点击的按钮添加active状态
-                        btnFav.classList.add('active');
-                        // 自动打开编辑开关和评论开关
-                        if (editToggle) {
-                            editToggle.checked = true;
-                            if (issueNumberInput) {
-                                issueNumberInput.style.display = 'inline-block';
-                                issueNumberInput.value = item.issueNumber;
+                        // 检查是否已经选中
+                        if (btnFav.classList.contains('active')) {
+                            // 如果已选中，取消选中
+                            btnFav.classList.remove('active');
+                            // 关闭编辑开关和评论开关
+                            if (editToggle) {
+                                editToggle.checked = false;
+                                // 手动隐藏Issue号输入框
+                                if (issueNumberInput) {
+                                    issueNumberInput.style.display = 'none';
+                                }
                             }
+                            if (commentToggle) {
+                                commentToggle.checked = false;
+                            }
+                            // 清空所有标签选择
+                            selectedTags = [];
+                            const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                            tagBtns.forEach(btn => btn.classList.remove('active'));
+                            // 更新按钮文本
+                            updateButtonText();
+                        } else {
+                            // 先移除所有收藏按钮的active状态
+                            const allFavBtns = favContainer.querySelectorAll('.cnb-tag-btn');
+                            allFavBtns.forEach(btn => btn.classList.remove('active'));
+                            // 为当前点击的按钮添加active状态
+                            btnFav.classList.add('active');
+                            // 自动打开编辑开关和评论开关
+                            if (editToggle) {
+                                editToggle.checked = true;
+                                if (issueNumberInput) {
+                                    issueNumberInput.style.display = 'inline-block';
+                                    issueNumberInput.value = item.issueNumber;
+                                }
+                            }
+                            if (commentToggle) {
+                                commentToggle.checked = true;
+                            }
+                            // 获取Issue的标签
+                            fetchIssueLabels(item.issueNumber, (labels, error) => {
+                                if (error) {
+                                    console.error('获取标签失败:', error);
+                                    return;
+                                }
+                                // 提取标签名称
+                                const labelNames = labels.map(l => l.name || l);
+                                // 清空当前选择
+                                selectedTags = [];
+                                const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                                tagBtns.forEach(btn => {
+                                    const tagName = btn.textContent;
+                                    // 如果标签在Issue的标签列表中，则勾选
+                                    if (labelNames.includes(tagName)) {
+                                        btn.classList.add('active');
+                                        selectedTags.push(tagName);
+                                    } else {
+                                        btn.classList.remove('active');
+                                    }
+                                });
+                            });
+                            // 更新按钮文本
+                            updateButtonText();
                         }
-                        if (commentToggle) {
-                            commentToggle.checked = true;
-                        }
-                        // 更新按钮文本
-                        updateButtonText();
                     });
                     favContainer.appendChild(btnFav);
                 });
@@ -2051,6 +2097,145 @@ ${escapeHtml(selectedContent)}</textarea>
             </div>
         `;
 
+        // 先定义常用DOM元素
+        const editToggle = dialog.querySelector('#cnb-edit-toggle');
+        const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+        const issueNumberInput = dialog.querySelector('#cnb-issue-number');
+        const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
+        const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
+
+        // 更新按钮文本的函数
+        function updateButtonText() {
+            const isEdit = editToggle ? editToggle.checked : false;
+            const isComment = commentToggle ? commentToggle.checked : false;
+
+            if (isComment) {
+                confirmBtn.textContent = '添加评论';
+            } else if (isEdit) {
+                confirmBtn.textContent = '修改Issue';
+            } else {
+                confirmBtn.textContent = '创建Issue';
+            }
+
+            if (doneBtn) {
+                if (isComment) {
+                    doneBtn.textContent = '添加评论并完成';
+                } else if (isEdit) {
+                    doneBtn.textContent = '修改并完成';
+                } else {
+                    doneBtn.textContent = '创建完成Issue';
+                }
+            }
+        }
+
+        // 渲染收藏按钮
+        const favContainer = dialog.querySelector('#cnb-issue-fav');
+        if (favContainer) {
+            favContainer.innerHTML = '';
+            let favConfig = '';
+            try {
+                if (typeof GM_getValue === 'function') {
+                    favConfig = GM_getValue('cnbFavIssue', '') || '';
+                }
+            } catch (_) {}
+
+            // 解析收藏配置: 1|收藏,5|阅读 或 1|收藏，5|阅读（支持中文逗号）
+            const favItems = [];
+            if (favConfig) {
+                const parts = favConfig.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+                parts.forEach(part => {
+                    const match = part.match(/^(\d+)\|(.+)$/);
+                    if (match) {
+                        favItems.push({
+                            issueNumber: match[1],
+                            name: match[2].trim()
+                        });
+                    }
+                });
+            }
+
+            // 如果收藏为空，隐藏整个收藏区域
+            if (favItems.length === 0) {
+                const favSection = favContainer.parentElement;
+                if (favSection) {
+                    favSection.style.display = 'none';
+                }
+            } else {
+                favItems.forEach(item => {
+                    const btnFav = document.createElement('button');
+                    btnFav.type = 'button';
+                    btnFav.className = 'cnb-tag-btn';
+                    btnFav.textContent = item.name;
+                    btnFav.addEventListener('click', () => {
+                        // 检查是否已经选中
+                        if (btnFav.classList.contains('active')) {
+                            // 如果已选中，取消选中
+                            btnFav.classList.remove('active');
+                            // 关闭编辑开关和评论开关
+                            if (editToggle) {
+                                editToggle.checked = false;
+                                // 手动隐藏Issue号输入框
+                                if (issueNumberInput) {
+                                    issueNumberInput.style.display = 'none';
+                                }
+                            }
+                            if (commentToggle) {
+                                commentToggle.checked = false;
+                            }
+                            // 清空所有标签选择
+                            selectedTags = [];
+                            const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                            tagBtns.forEach(btn => btn.classList.remove('active'));
+                            // 更新按钮文本
+                            updateButtonText();
+                        } else {
+                            // 先移除所有收藏按钮的active状态
+                            const allFavBtns = favContainer.querySelectorAll('.cnb-tag-btn');
+                            allFavBtns.forEach(btn => btn.classList.remove('active'));
+                            // 为当前点击的按钮添加active状态
+                            btnFav.classList.add('active');
+                            // 自动打开编辑开关和评论开关
+                            if (editToggle) {
+                                editToggle.checked = true;
+                                if (issueNumberInput) {
+                                    issueNumberInput.style.display = 'inline-block';
+                                    issueNumberInput.value = item.issueNumber;
+                                }
+                            }
+                            if (commentToggle) {
+                                commentToggle.checked = true;
+                            }
+                            // 获取Issue的标签
+                            fetchIssueLabels(item.issueNumber, (labels, error) => {
+                                if (error) {
+                                    console.error('获取标签失败:', error);
+                                    return;
+                                }
+                                // 提取标签名称
+                                const labelNames = labels.map(l => l.name || l);
+                                // 清空当前选择
+                                selectedTags = [];
+                                const tagBtns = tagsContainer.querySelectorAll('.cnb-tag-btn');
+                                tagBtns.forEach(btn => {
+                                    const tagName = btn.textContent;
+                                    // 如果标签在Issue的标签列表中，则勾选
+                                    if (labelNames.includes(tagName)) {
+                                        btn.classList.add('active');
+                                        selectedTags.push(tagName);
+                                    } else {
+                                        btn.classList.remove('active');
+                                    }
+                                });
+                            });
+                            // 更新按钮文本
+                            updateButtonText();
+                        }
+                    });
+                    favContainer.appendChild(btnFav);
+                });
+            }
+        }
+
         // 渲染标签选择
         const tagsContainer = dialog.querySelector('#cnb-issue-tags');
         let selectedTags = [];
@@ -2084,11 +2269,6 @@ ${escapeHtml(selectedContent)}</textarea>
         }
 
         const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
-        const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
-        const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
-        const editToggle = dialog.querySelector('#cnb-edit-toggle');
-        const commentToggle = dialog.querySelector('#cnb-comment-toggle');
-        const issueNumberInput = dialog.querySelector('#cnb-issue-number');
 
         // 监听编辑开关变化，显示/隐藏Issue号输入框
         if (editToggle && issueNumberInput) {
@@ -2150,30 +2330,6 @@ ${escapeHtml(selectedContent)}</textarea>
                 }
                 updateButtonText();
             });
-        }
-
-        // 更新按钮文本的函数
-        function updateButtonText() {
-            const isEdit = editToggle ? editToggle.checked : false;
-            const isComment = commentToggle ? commentToggle.checked : false;
-
-            if (isComment) {
-                confirmBtn.textContent = '添加评论';
-            } else if (isEdit) {
-                confirmBtn.textContent = '修改Issue';
-            } else {
-                confirmBtn.textContent = '创建Issue';
-            }
-
-            if (doneBtn) {
-                if (isComment) {
-                    doneBtn.textContent = '添加评论并完成';
-                } else if (isEdit) {
-                    doneBtn.textContent = '修改并完成';
-                } else {
-                    doneBtn.textContent = '创建完成Issue';
-                }
-            }
         }
 
         const closeDialog = () => {
