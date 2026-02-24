@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.1
+// @version      1.5.2
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -1346,6 +1346,10 @@ ${escapeHtml(selectedContent)}</textarea>
                 </div>
             </div>
             <div>
+                <label>收藏:</label>
+                <div id="cnb-issue-fav"></div>
+            </div>
+            <div>
                 <label>标签:</label>
                 <div id="cnb-issue-tags"></div>
             </div>
@@ -1357,6 +1361,99 @@ ${escapeHtml(selectedContent)}</textarea>
         `;
 
         // 添加事件监听
+        // 先定义常用DOM元素
+        const editToggle = dialog.querySelector('#cnb-edit-toggle');
+        const commentToggle = dialog.querySelector('#cnb-comment-toggle');
+        const issueNumberInput = dialog.querySelector('#cnb-issue-number');
+        const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
+        const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
+
+        // 更新按钮文本的函数
+        function updateButtonText() {
+            const isEdit = editToggle ? editToggle.checked : false;
+            const isComment = commentToggle ? commentToggle.checked : false;
+
+            if (isComment) {
+                confirmBtn.textContent = '添加评论';
+            } else if (isEdit) {
+                confirmBtn.textContent = '修改Issue';
+            } else {
+                confirmBtn.textContent = '创建Issue';
+            }
+
+            if (doneBtn) {
+                if (isComment) {
+                    doneBtn.textContent = '添加评论并完成';
+                } else if (isEdit) {
+                    doneBtn.textContent = '修改并完成';
+                } else {
+                    doneBtn.textContent = '创建完成Issue';
+                }
+            }
+        }
+
+        // 渲染收藏按钮
+        const favContainer = dialog.querySelector('#cnb-issue-fav');
+        if (favContainer) {
+            favContainer.innerHTML = '';
+            let favConfig = '';
+            try {
+                if (typeof GM_getValue === 'function') {
+                    favConfig = GM_getValue('cnbFavIssue', '') || '';
+                }
+            } catch (_) {}
+
+            // 解析收藏配置: 1|收藏,5|阅读
+            const favItems = [];
+            if (favConfig) {
+                const parts = favConfig.split(',').map(s => s.trim()).filter(Boolean);
+                parts.forEach(part => {
+                    const match = part.match(/^(\d+)\|(.+)$/);
+                    if (match) {
+                        favItems.push({
+                            issueNumber: match[1],
+                            name: match[2].trim()
+                        });
+                    }
+                });
+            }
+
+            if (favItems.length === 0) {
+                const hint = document.createElement('div');
+                hint.className = 'cnb-hint';
+                hint.textContent = '在设置中配置收藏后可在此选择';
+                favContainer.appendChild(hint);
+            } else {
+                favItems.forEach(item => {
+                    const btnFav = document.createElement('button');
+                    btnFav.type = 'button';
+                    btnFav.className = 'cnb-tag-btn';
+                    btnFav.textContent = item.name;
+                    btnFav.addEventListener('click', () => {
+                        // 先移除所有收藏按钮的active状态
+                        const allFavBtns = favContainer.querySelectorAll('.cnb-tag-btn');
+                        allFavBtns.forEach(btn => btn.classList.remove('active'));
+                        // 为当前点击的按钮添加active状态
+                        btnFav.classList.add('active');
+                        // 自动打开编辑开关和评论开关
+                        if (editToggle) {
+                            editToggle.checked = true;
+                            if (issueNumberInput) {
+                                issueNumberInput.style.display = 'inline-block';
+                                issueNumberInput.value = item.issueNumber;
+                            }
+                        }
+                        if (commentToggle) {
+                            commentToggle.checked = true;
+                        }
+                        // 更新按钮文本
+                        updateButtonText();
+                    });
+                    favContainer.appendChild(btnFav);
+                });
+            }
+        }
+
         // 渲染标签为可选按钮
         const tagsContainer = dialog.querySelector('#cnb-issue-tags');
         let selectedTags = [];
@@ -1389,12 +1486,7 @@ ${escapeHtml(selectedContent)}</textarea>
             }
         }
         const cancelBtn = dialog.querySelector('.cnb-issue-btn-cancel');
-        const confirmBtn = dialog.querySelector('.cnb-issue-btn-confirm');
-        const doneBtn = dialog.querySelector('.cnb-issue-btn-done');
         const uploadToggle = dialog.querySelector('#cnb-upload-toggle');
-        const editToggle = dialog.querySelector('#cnb-edit-toggle');
-        const commentToggle = dialog.querySelector('#cnb-comment-toggle');
-        const issueNumberInput = dialog.querySelector('#cnb-issue-number');
 
         // 监听上传开关变化，保存状态
         if (uploadToggle) {
@@ -1410,17 +1502,9 @@ ${escapeHtml(selectedContent)}</textarea>
         if (editToggle && issueNumberInput) {
             editToggle.addEventListener('change', () => {
                 issueNumberInput.style.display = editToggle.checked ? 'inline-block' : 'none';
-                // 如果关闭编辑开关且评论开关已打开，则不允许关闭
+                // 如果关闭编辑开关，则同时关闭评论开关
                 if (!editToggle.checked && commentToggle.checked) {
-                    editToggle.checked = true;
-                    issueNumberInput.style.display = 'inline-block';
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: '添加评论功能必须开启修改Issue',
-                            title: 'CNB Issue工具',
-                            timeout: 2000
-                        });
-                    }
+                    commentToggle.checked = false;
                 }
                 updateButtonText();
             });
@@ -1474,30 +1558,6 @@ ${escapeHtml(selectedContent)}</textarea>
                 }
                 updateButtonText();
             });
-        }
-
-        // 更新按钮文本的函数
-        function updateButtonText() {
-            const isEdit = editToggle ? editToggle.checked : false;
-            const isComment = commentToggle ? commentToggle.checked : false;
-
-            if (isComment) {
-                confirmBtn.textContent = '添加评论';
-            } else if (isEdit) {
-                confirmBtn.textContent = '修改Issue';
-            } else {
-                confirmBtn.textContent = '创建Issue';
-            }
-
-            if (doneBtn) {
-                if (isComment) {
-                    doneBtn.textContent = '添加评论并完成';
-                } else if (isEdit) {
-                    doneBtn.textContent = '修改并完成';
-                } else {
-                    doneBtn.textContent = '创建完成Issue';
-                }
-            }
         }
 
         // 监听编辑开关变化
@@ -1960,6 +2020,10 @@ ${escapeHtml(selectedContent)}</textarea>
                 <div class="cnb-hint" id="cnb-capture-status">点击创建时将自动生成并上传截图</div>
             </div>
             <div>
+                <label>收藏:</label>
+                <div id="cnb-issue-fav"></div>
+            </div>
+            <div>
                 <label>标签:</label>
                 <div id="cnb-issue-tags"></div>
             </div>
@@ -2030,17 +2094,9 @@ ${escapeHtml(selectedContent)}</textarea>
         if (editToggle && issueNumberInput) {
             editToggle.addEventListener('change', () => {
                 issueNumberInput.style.display = editToggle.checked ? 'inline-block' : 'none';
-                // 如果关闭编辑开关且评论开关已打开，则不允许关闭
+                // 如果关闭编辑开关，则同时关闭评论开关
                 if (!editToggle.checked && commentToggle.checked) {
-                    editToggle.checked = true;
-                    issueNumberInput.style.display = 'inline-block';
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: '添加评论功能必须开启修改Issue',
-                            title: 'CNB Issue工具',
-                            timeout: 2000
-                        });
-                    }
+                    commentToggle.checked = false;
                 }
                 updateButtonText();
             });
@@ -2718,10 +2774,13 @@ ${escapeHtml(selectedContent)}</textarea>
         const currentHotkey = START_HOTKEY || '';
         const currentHotkeyEnabled = !!HOTKEY_ENABLED;
         let currentClipIssue = '';
+        let currentFavIssue = '';
         try {
             if (typeof GM_getValue === 'function') {
                 const v = GM_getValue('cnbClipboardIssue', '');
                 currentClipIssue = (v == null) ? '' : String(v);
+                const f = GM_getValue('cnbFavIssue', '');
+                currentFavIssue = (f == null) ? '' : String(f);
             }
         } catch (_) {}
 
@@ -2740,6 +2799,11 @@ ${escapeHtml(selectedContent)}</textarea>
             <div>
                 <label>剪贴板位置（Issue编号）:</label>
                 <input class="cnb-control" type="text" id="cnb-setting-clip-issue" placeholder="例如: 25（留空则隐藏剪贴板按钮）" value="${escapeHtml(currentClipIssue)}">
+            </div>
+            <div>
+                <label>评论收藏（Issue编号）:</label>
+                <input class="cnb-control" type="text" id="cnb-setting-fav-issue" placeholder="例如: 1|收藏，5|阅读" value="${escapeHtml(currentFavIssue)}">
+                <div class="cnb-hint">格式: Issue号|名称，多个用逗号分隔（如: 1|收藏,5|阅读）</div>
             </div>
             <div>
                 <div class="cnb-flex" style="justify-content: space-between;">
@@ -2772,6 +2836,15 @@ ${escapeHtml(selectedContent)}</textarea>
         const repoInput = dialog.querySelector('#cnb-setting-repo');
         const tokenInput = dialog.querySelector('#cnb-setting-token');
         const clipIssueInput = dialog.querySelector('#cnb-setting-clip-issue');
+        const favIssueInput = dialog.querySelector('#cnb-setting-fav-issue');
+
+        // 评论收藏即时保存
+        if (favIssueInput) {
+            favIssueInput.addEventListener('input', () => {
+                const favIssue = favIssueInput.value.trim();
+                if (typeof GM_setValue === 'function') GM_setValue('cnbFavIssue', favIssue);
+            });
+        }
 
         // 仓库路径即时保存
         if (repoInput) {
