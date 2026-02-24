@@ -2,7 +2,7 @@
 
 一个 Tampermonkey（油猴）脚本，可在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，并按"页面信息 + 选择的内容"格式展示，支持通过 CNB 接口直接创建 Issue存储在CNB中。
 
-![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/17.png)
+![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/18.png)
 
 B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 
@@ -17,9 +17,9 @@ B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 ## 安装与使用
 
 ### 安装步骤
-1. 安装 Tampermonkey 浏览器扩展
-2. 安装 CNB Issue 区域选择工具脚本
-3. 刷新页面即可使用
+1. 在油猴安装 [Tampermonkey 浏览器扩展](https://greasyfork.org/zh-CN/scripts/552006-cnb-issue-%E7%BD%91%E9%A1%B5%E5%86%85%E5%AE%B9%E6%94%B6%E8%97%8F%E5%B7%A5%E5%85%B7)
+2. 在安装ScriptCat [ScriptCat](https://scriptcat.org/zh-CN/script-show-page/4421)
+3. 在CNB直连（提前是安装过油猴或者ScriptCat）安装 [CNB Issue 区域选择工具脚本](https://cnb.cool/IIIStudio/Code/Greasemonkey/CNBIssue/-/git/raw/main/script.user.js)
 
 ### 基本使用
 1. 点击侧边栏图标激活工具
@@ -47,34 +47,6 @@ B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 ### 启用方法
 在设置中填写剪贴板位置（Issue 编号），例如：2
 对应格式：`https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/issues/2`
-
-### 功能特点
-- 可拖动、固定位置
-- 自定义剪贴板内容
-- 支持多行代码折叠
-- 切换不同的 Issue ID
-
-## 操作技巧
-
-- **多选功能**：使用 `Ctrl + 左键` 进行多区域选择
-- **内容复制**：点击列表项可复制标题和内容到剪贴板
-- **安全跳转**：内置 CNB URL 安全拦截机制
-
-## 界面展示
-
-工具在浏览器侧边显示控制面板，包含：
-- 区域选择按钮
-- 内容预览窗口
-- 设置选项
-- 剪贴板面板（可选）
-- 创建 Issue 按钮
-
-## 注意事项
-
-- 标签功能需要先在仓库中创建对应的标签
-- 标题显示最长 45 个字符，过长会自动截断
-- 剪贴板功能默认关闭，需要手动设置 Issue ID 启用
-- 确保访问令牌具有足够的仓库操作权限
 
 ## 更新日志
 ### 版本 1.5.2
@@ -127,9 +99,3 @@ B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 ### 版本 1.2.1
 - 添加任务列表显示（仅显示完成状态）
 - 添加创建完成 Issue 按钮
-
-## 图片
-
-![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/13.jpg)
-
-![](https://raw.githubusercontent.com/IIIStudio/CNBIssue/main/image/15.jpg)
