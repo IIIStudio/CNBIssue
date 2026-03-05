@@ -49,6 +49,9 @@ B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 对应格式：`https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/-/issues/2`
 
 ## 更新日志
+### 版本 1.5.3
+- 清理网页标题中的冗余信息
+
 ### 版本 1.5.2
 - 添加收藏功能
 
