@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.2
+// @version      1.5.3
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -1220,7 +1220,7 @@
 
         // 获取选择的内容并转换为Markdown（支持多选）
         const elements = Array.isArray(selected) ? selected : (selected ? [selected] : []);
-        const pageTitle = document.title;
+        const pageTitle = document.title.replace(/\s*-\s*.+$/, '').replace(/\s+/g, ' ');
         const pageUrl = window.location.href;
 
         // 检测是否为微博网站
@@ -1316,7 +1316,7 @@
             </div>
             <div>
                 <label>Markdown内容:</label>
-                <textarea class="cnb-control" id="cnb-issue-content" placeholder="Markdown内容将自动生成">## 出处
+                <textarea class="cnb-control" id="cnb-issue-content" placeholder="Markdown内容将自动生成">## 出处：${escapeHtml(pageTitle)}
 **URL:** ${escapeHtml(pageUrl)}
 **选择时间:** ${new Date().toLocaleString()}
 ${escapeHtml(selectedContent)}</textarea>
@@ -2036,7 +2036,7 @@ ${escapeHtml(selectedContent)}</textarea>
         }
 
         // 提取标题（从选择区域中查找微博正文）
-        let weiboTitle = pageTitle;
+        let weiboTitle = pageTitle.replace(/\s*-\s*.+$/, '').replace(/\s+/g, ' ');
         const wbtextElement = elements[0].querySelector('[class*="_wbtext"]');
         if (wbtextElement) {
             const textContent = wbtextElement.textContent.trim();
@@ -2059,7 +2059,7 @@ ${escapeHtml(selectedContent)}</textarea>
             </div>
             <div>
                 <label>出处信息:</label>
-                <textarea class="cnb-control" id="cnb-issue-content" readonly style="height: 120px;">## 出处
+                <textarea class="cnb-control" id="cnb-issue-content" readonly style="height: 120px;">## 出处：${escapeHtml(weiboTitle)}
 **URL:** ${escapeHtml(sourceUrl)}
 **选择时间:** ${sourceTime}
 下面是生成的图片</textarea>
