@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.3
+// @version      1.5.4
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -5458,33 +5458,6 @@ ${md}`, 'text');
         try { if (__CNB_CLIP_DIALOG?.parentNode) { __CNB_CLIP_DIALOG.remove(); __CNB_CLIP_DIALOG = null; } } catch (_) {}
     }
 
-    // 初始化 cnb.cool 相关功能
-    function initCnbFeatures() {
-        if (!isCnbDomain()) return;
-
-        handleCnbGotoPage();
-        rewriteCnbGotoLinks(document);
-        document.addEventListener('click', cnbGotoClickHandler, true);
-
-        try {
-            __CNB_MO = new MutationObserver(mutations => {
-                mutations.forEach(m => {
-                    m.addedNodes?.forEach(node => {
-                        if (node.nodeType === Node.ELEMENT_NODE) {
-                            rewriteCnbGotoLinks(node);
-                        }
-                    });
-                });
-            });
-            __CNB_MO.observe(document.documentElement || document.body, { childList: true, subtree: true });
-        } catch (_) {}
-
-        if (!__CNB_UNLOAD_BOUND) {
-            window.addEventListener('beforeunload', cleanup, { once: true });
-            __CNB_UNLOAD_BOUND = true;
-        }
-    }
-
     // 读取持久化配置
     function loadPersistedConfig() {
         try {
@@ -5504,6 +5477,100 @@ ${md}`, 'text');
             HOTKEY_ENABLED = !!hkEnabled;
             CONFIG.uploadEnabled = !!uploadEnabled;
         } catch (_) {}
+    }
+
+    // 隐藏"暂无展示仓库"的空状态容器
+    function hideEmptyRepoContainer() {
+        const emptyText = document.querySelector('.text-base.text-ter.mt-4');
+        if (emptyText && emptyText.textContent === '暂无展示仓库') {
+            const container = emptyText.closest('.w-full.h-\\[328px\\]');
+            if (container) {
+                container.style.setProperty('display', 'none', 'important');
+            }
+        }
+    }
+
+    // CNB 网站功能：添加"创建仓库"按钮
+    function initCnbFeatures() {
+        // 检查是否在 cnb.cool 网站
+        if (!location.hostname.includes('cnb.cool')) return;
+
+        // 处理短链接跳转（仅执行一次）
+        handleCnbGotoPage();
+
+        // 添加点击事件委托（仅添加一次）
+        document.addEventListener('click', cnbGotoClickHandler, true);
+
+        // 统一的处理函数
+        const processPage = () => {
+            addCreateRepoButton();
+            rewriteCnbGotoLinks();
+            hideEmptyRepoContainer();
+        };
+
+        // 等待页面加载完成
+        const observer = new MutationObserver(() => {
+            processPage();
+        });
+
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+
+        // 立即尝试添加
+        processPage();
+    }
+
+    function addCreateRepoButton() {
+        // 查找目标元素：包含"仓库墙"标题的父容器
+        const targetDiv = document.querySelector('h1.font-semibold.text-l');
+        if (!targetDiv) return;
+
+        const parentDiv = targetDiv.closest('.flex.items-center.justify-between');
+        if (!parentDiv) return;
+
+        // 检查是否已经添加过按钮
+        if (parentDiv.querySelector('.cnb-create-repo-btn')) return;
+
+        // 获取当前路径
+        const pathParts = location.pathname.split('/').filter(Boolean);
+        const groupPath = pathParts.join('/');
+
+        // 创建按钮容器
+        const buttonContainer = document.createElement('div');
+        buttonContainer.className = 'flex items-center gap-3';
+
+        // 移动原有的"更新仓库墙"按钮到新容器中
+        const existingButton = parentDiv.querySelector('button');
+        if (existingButton) {
+            buttonContainer.appendChild(existingButton);
+        }
+
+        // 创建"创建仓库"按钮
+        const createRepoBtn = document.createElement('button');
+        createRepoBtn.className = 't-button t-button--theme-primary t-button--variant-base cnb-create-repo-btn';
+        createRepoBtn.innerHTML = `
+            <svg id="add" class="ruyi-icon ruyi-icon-add" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" style="width: 16px; height: 16px;">
+                <g fill="none">
+                    <path d="M7.34998 8.64998V12.5H8.64998V8.64998H12.5V7.34998H8.64998V3.5H7.34998V7.34998H3.5V8.64998H7.34998Z" fill="currentColor"></path>
+                </g>
+            </svg>
+            <span class="t-button__text">创建仓库</span>
+        `;
+
+        // 设置链接
+        const createRepoUrl = groupPath ? `https://cnb.cool/new/repos?group=${groupPath}` : 'https://cnb.cool/new/repos';
+        createRepoBtn.addEventListener('click', () => {
+            window.location.href = createRepoUrl;
+        });
+
+        buttonContainer.appendChild(createRepoBtn);
+
+        // 清空原容器并添加新容器
+        parentDiv.innerHTML = '';
+        parentDiv.appendChild(targetDiv);
+        parentDiv.appendChild(buttonContainer);
     }
 
     // 初始化
