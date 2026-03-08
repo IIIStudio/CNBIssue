@@ -5510,6 +5510,9 @@ ${md}`, 'text');
 
         // "执行"按钮鼠标悬停时自动打开弹窗
         enhanceExecuteButtonHover();
+
+        // 添加"与我有关"标签
+        addMineTab();
     }
 
     // 增强"执行"按钮：鼠标悬停时自动打开弹窗
@@ -5540,6 +5543,36 @@ ${md}`, 'text');
                 }, { passive: true });
             }
         });
+    }
+
+    // 添加"与我有关"标签
+    function addMineTab() {
+        if (!isCnbDomain()) return;
+
+        // 查找标签导航容器
+        const navWrap = document.querySelector('.t-tabs__nav-wrap');
+        if (!navWrap) return;
+
+        // 检查是否已经添加过
+        if (navWrap.querySelector('.cnb-mine-tab')) return;
+
+        // 创建新的标签项
+        const newTabItem = document.createElement('div');
+        newTabItem.className = 't-tabs__nav-item t-size-m t-is-top cnb-mine-tab';
+        newTabItem.innerHTML = `
+            <div class="t-tabs__nav-item-wrapper">
+                <span class="t-tabs__nav-item-text-wrapper">
+                    <div class="relative flex">
+                        <a href="https://cnb.cool/mine" style="text-decoration: none; color: inherit; display: flex; align-items: center;">
+                            <span class="text-m">与我有关</span>
+                        </a>
+                    </div>
+                </span>
+            </div>
+        `;
+
+        // 添加到标签导航中
+        navWrap.appendChild(newTabItem);
     }
 
     // CNB 网站功能：添加"创建仓库"按钮
