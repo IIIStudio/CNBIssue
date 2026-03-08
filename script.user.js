@@ -3812,6 +3812,9 @@ ${md}`, 'text');
                     overflow: hidden;
                     font: 13px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;
                     color: #000;
+                    opacity: 1;
+                    pointer-events: auto;
+                    transition: opacity 0.3s ease;
                 }
                 .cnb-clipwin-header {
                     position: relative;
@@ -3874,6 +3877,9 @@ ${md}`, 'text');
                     display: flex;
                     flex-direction: column;
                     z-index: 10011;
+                    opacity: 1;
+                    pointer-events: auto;
+                    transition: opacity 0.3s ease;
                 }
                 .cnb-clipwin-tab {
                     margin: 2px 0;
@@ -4067,12 +4073,22 @@ ${md}`, 'text');
             }
         } catch (_) {}
 
+        // 隐藏剪贴板的定时器
+        let hideClipboardTimer = null;
+        // 标志位：防止初始化时触发隐藏
+        let isInitialized = false;
+
         function cleanup() {
             document.removeEventListener('mousedown', onDocDown, true);
             document.removeEventListener('mouseup', onDocUp, true);
             document.removeEventListener('mousemove', onDocMove, true);
             document.removeEventListener('click', onOutsideClick, true);
             if (typeof onEsc === 'function') document.removeEventListener('keydown', onEsc, true);
+            // 清理隐藏定时器
+            if (hideClipboardTimer) {
+                clearTimeout(hideClipboardTimer);
+                hideClipboardTimer = null;
+            }
         }
         function close() {
             cleanup();
@@ -4214,6 +4230,67 @@ ${md}`, 'text');
 
         const bodyEl = dialog.querySelector('#cnb-clipwin-body');
         const tabsEl = tabsContainer;
+
+        // 显示剪贴板窗口
+        function showClipboard() {
+            if (dialog) {
+                dialog.style.opacity = '1';
+                dialog.style.display = 'flex';
+                if (tabsContainer) {
+                    tabsContainer.style.opacity = '1';
+                    // 只有在有多个 Issue 时才显示标签容器
+                    if (hasMultipleIssues) {
+                        tabsContainer.style.display = 'flex';
+                    }
+                }
+            }
+        }
+
+        // 隐藏剪贴板窗口
+        function hideClipboard() {
+            if (dialog) {
+                dialog.style.opacity = '0';
+                if (tabsContainer) {
+                    tabsContainer.style.opacity = '0';
+                }
+            }
+        }
+
+        // 固定状态下的鼠标交互逻辑
+        function onClipboardEnter() {
+            // 清除隐藏定时器
+            if (hideClipboardTimer) {
+                clearTimeout(hideClipboardTimer);
+                hideClipboardTimer = null;
+            }
+            // 显示剪贴板
+            showClipboard();
+        }
+
+        function onClipboardLeave() {
+            // 仅在固定状态下启用自动隐藏，且在初始化完成后才生效
+            if (!pinned || !isInitialized) return;
+
+            // 清除之前的定时器
+            if (hideClipboardTimer) {
+                clearTimeout(hideClipboardTimer);
+            }
+            // 2秒后隐藏
+            hideClipboardTimer = setTimeout(() => {
+                hideClipboard();
+            }, 2000);
+        }
+
+        // 绑定鼠标进入/离开事件
+        dialog.addEventListener('mouseenter', onClipboardEnter);
+        dialog.addEventListener('mouseleave', onClipboardLeave);
+        tabsContainer.addEventListener('mouseenter', onClipboardEnter);
+        tabsContainer.addEventListener('mouseleave', onClipboardLeave);
+
+        // 延迟标记初始化完成，避免创建时触发mouseleave
+        setTimeout(() => {
+            isInitialized = true;
+        }, 500);
 
         // 读取剪贴板位置（Issue编号和窗口位置）
         let __clipIssueNum = '';
@@ -4685,6 +4762,9 @@ ${md}`, 'text');
 
         // 加载默认 Issue（第一个）
         loadIssue(issueList[0], 0);
+
+        // 确保窗口在创建后是显示状态
+        showClipboard();
     }
 
     // 创建Issue
