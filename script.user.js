@@ -5723,14 +5723,14 @@ ${md}`, 'text');
         targetDiv.appendChild(toggleContainer);
     }
 
-    // 增强"执行"按钮：鼠标悬停时自动打开弹窗
+    // 增强"执行"和"新建"按钮：鼠标悬停时自动打开弹窗
     function enhanceExecuteButtonHover() {
         if (!isCnbDomain()) return;
 
-        // 查找包含"执行"文本的按钮
+        // 查找包含"执行"或"新建"文本的按钮
         document.querySelectorAll('.t-button--theme-default.t-button--variant-outline').forEach(btn => {
             const buttonText = btn.textContent || '';
-            if (buttonText.includes('执行')) {
+            if (buttonText.includes('执行') || buttonText.includes('新建')) {
                 // 标记已处理，避免重复绑定
                 if (btn.dataset.enhanced) return;
                 btn.dataset.enhanced = 'true';
