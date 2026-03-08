@@ -5507,6 +5507,39 @@ ${md}`, 'text');
                 el.classList.add('xl:grid-cols-2');
             }
         });
+
+        // "执行"按钮鼠标悬停时自动打开弹窗
+        enhanceExecuteButtonHover();
+    }
+
+    // 增强"执行"按钮：鼠标悬停时自动打开弹窗
+    function enhanceExecuteButtonHover() {
+        if (!isCnbDomain()) return;
+
+        // 查找包含"执行"文本的按钮
+        document.querySelectorAll('.t-button--theme-default.t-button--variant-outline').forEach(btn => {
+            const buttonText = btn.textContent || '';
+            if (buttonText.includes('执行')) {
+                // 标记已处理，避免重复绑定
+                if (btn.dataset.enhanced) return;
+                btn.dataset.enhanced = 'true';
+
+                // 鼠标进入时模拟点击打开弹窗
+                btn.addEventListener('mouseenter', () => {
+                    // 先添加 class
+                    btn.classList.add('t-popup-open');
+                    // 模拟点击事件触发弹窗
+                    setTimeout(() => {
+                        btn.click();
+                    }, 10);
+                }, { passive: true });
+
+                // 鼠标离开时移除 class（不关闭弹窗，让用户可以交互）
+                btn.addEventListener('mouseleave', () => {
+                    btn.classList.remove('t-popup-open');
+                }, { passive: true });
+            }
+        });
     }
 
     // CNB 网站功能：添加"创建仓库"按钮
