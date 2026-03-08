@@ -5494,25 +5494,145 @@ ${md}`, 'text');
     function enhanceGridLayout() {
         if (!isCnbDomain()) return;
 
-        // 修改 class="grid grid-cols-1 gap-4 mt-4 mb-8" 为 class="grid grid-cols-1 gap-4 mt-4 mb-8 xl:grid-cols-2"
-        document.querySelectorAll('.grid.grid-cols-1.gap-4.mt-4.mb-8').forEach(el => {
-            if (!el.classList.contains('xl:grid-cols-2')) {
-                el.classList.add('xl:grid-cols-2');
+        // 添加单栏/双栏切换按钮样式
+        GM_addStyle(`
+            .cnb-grid-toggle-btn {
+                padding: 4px !important;
             }
-        });
+            .cnb-grid-toggle-active {
+                background-color: #3d3d3d !important;
+                color: #fff !important;
+            }
+            .cnb-grid-toggle-inactive {
+                background-color: #f3f4f6 !important;
+                color: #6b7280 !important;
+            }
+            .cnb-grid-toggle-inactive:hover {
+                background-color: #e5e7eb !important;
+            }
+        `);
 
-        // 修改 class="grid gap-4 mt-4" 为 class="grid gap-4 mt-4 xl:grid-cols-2"
-        document.querySelectorAll('.grid.gap-4.mt-4').forEach(el => {
-            if (!el.classList.contains('xl:grid-cols-2')) {
-                el.classList.add('xl:grid-cols-2');
-            }
-        });
+        // 添加单栏/双栏切换开关
+        addGridLayoutToggle();
+
+        // 应用布局
+        applyGridLayout();
 
         // "执行"按钮鼠标悬停时自动打开弹窗
         enhanceExecuteButtonHover();
 
         // 添加"与我有关"标签
         addMineTab();
+    }
+
+    // 应用网格布局
+    function applyGridLayout() {
+        const isDoubleColumn = localStorage.getItem('cnbGridLayout') === 'double';
+
+        // 只修改 class="grid grid-cols-1 gap-4 mt-4 mb-8"（"最近更新"下面的网格）
+        document.querySelectorAll('.grid.grid-cols-1.gap-4.mt-4.mb-8').forEach(el => {
+            if (isDoubleColumn) {
+                if (!el.classList.contains('xl:grid-cols-2')) {
+                    el.classList.add('xl:grid-cols-2');
+                }
+            } else {
+                el.classList.remove('xl:grid-cols-2');
+            }
+        });
+    }
+
+    // 添加单栏/双栏切换开关
+    function addGridLayoutToggle() {
+        // 查找包含"最近更新"文本的元素
+        const elements = document.querySelectorAll('div');
+        let targetDiv = null;
+        for (const el of elements) {
+            const text = el.textContent.trim();
+            // 精确匹配"最近更新"文本
+            if (text === '最近更新' &&
+                el.classList.contains('font-semibold') &&
+                el.classList.contains('text-l') &&
+                el.classList.contains('mb-4') &&
+                el.classList.contains('mt-4')) {
+                targetDiv = el;
+                break;
+            }
+        }
+
+        if (!targetDiv) return;
+
+        // 检查是否已经添加过
+        if (targetDiv.querySelector('.cnb-grid-layout-toggle')) return;
+
+        // 获取当前布局状态
+        const isDoubleColumn = localStorage.getItem('cnbGridLayout') === 'double';
+
+        // 给目标div添加flex布局，让内容两端对齐
+        targetDiv.classList.add('flex', 'items-center', 'justify-between');
+
+        // 保存"最近更新"文本
+        const textContent = targetDiv.textContent.trim();
+        targetDiv.textContent = '';
+
+        // 创建左边的内容容器
+        const leftContent = document.createElement('span');
+        leftContent.textContent = textContent;
+
+        // 创建开关容器
+        const toggleContainer = document.createElement('div');
+        toggleContainer.className = 'cnb-grid-layout-toggle flex items-center gap-2';
+
+        // 创建单栏按钮（图标）
+        const singleBtn = document.createElement('button');
+        singleBtn.className = `cnb-grid-toggle-btn rounded-lg transition-colors ${!isDoubleColumn ? 'cnb-grid-toggle-active' : 'cnb-grid-toggle-inactive'}`;
+        singleBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+            </svg>
+        `;
+        singleBtn.title = '单栏';
+        singleBtn.addEventListener('click', () => {
+            localStorage.setItem('cnbGridLayout', 'single');
+            updateToggleButtons();
+            applyGridLayout();
+        });
+
+        // 创建双栏按钮（图标）
+        const doubleBtn = document.createElement('button');
+        doubleBtn.className = `cnb-grid-toggle-btn rounded-lg transition-colors ${isDoubleColumn ? 'cnb-grid-toggle-active' : 'cnb-grid-toggle-inactive'}`;
+        doubleBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="9" y1="3" x2="9" y2="21"></line>
+                <line x1="15" y1="3" x2="15" y2="21"></line>
+            </svg>
+        `;
+        doubleBtn.title = '双栏';
+        doubleBtn.addEventListener('click', () => {
+            localStorage.setItem('cnbGridLayout', 'double');
+            updateToggleButtons();
+            applyGridLayout();
+        });
+
+        // 更新按钮状态的函数
+        function updateToggleButtons() {
+            const isDoubleColumn = localStorage.getItem('cnbGridLayout') === 'double';
+            if (isDoubleColumn) {
+                singleBtn.className = 'cnb-grid-toggle-btn rounded-lg transition-colors cnb-grid-toggle-inactive';
+                doubleBtn.className = 'cnb-grid-toggle-btn rounded-lg transition-colors cnb-grid-toggle-active';
+            } else {
+                singleBtn.className = 'cnb-grid-toggle-btn rounded-lg transition-colors cnb-grid-toggle-active';
+                doubleBtn.className = 'cnb-grid-toggle-btn rounded-lg transition-colors cnb-grid-toggle-inactive';
+            }
+        }
+
+        toggleContainer.appendChild(singleBtn);
+        toggleContainer.appendChild(doubleBtn);
+
+        // 将左边内容和开关添加到div中
+        targetDiv.appendChild(leftContent);
+        targetDiv.appendChild(toggleContainer);
     }
 
     // 增强"执行"按钮：鼠标悬停时自动打开弹窗
