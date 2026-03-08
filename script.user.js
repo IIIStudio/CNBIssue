@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.6
+// @version      1.5.7
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -5800,6 +5800,8 @@ ${md}`, 'text');
             rewriteCnbGotoLinks();
             hideEmptyRepoContainer();
             enhanceGridLayout();
+            addInputCopyFeature();
+            addDownloadButtonFeature();
         };
 
         // 等待页面加载完成
@@ -5865,6 +5867,134 @@ ${md}`, 'text');
         parentDiv.innerHTML = '';
         parentDiv.appendChild(targetDiv);
         parentDiv.appendChild(buttonContainer);
+    }
+
+    // 为 .t-input__wrap.flex-auto.min-w-0 输入框添加点击复制功能
+    function addInputCopyFeature() {
+        // 查找目标输入框容器
+        const inputWraps = document.querySelectorAll('.t-input__wrap.flex-auto.min-w-0');
+        inputWraps.forEach(wrap => {
+            // 避免重复绑定
+            if (wrap.dataset.copyEnabled) return;
+            wrap.dataset.copyEnabled = 'true';
+
+            // 添加点击事件
+            wrap.addEventListener('click', (e) => {
+                // 获取输入框的值
+                const input = wrap.querySelector('input');
+                if (input && input.value) {
+                    // 使用 GM_setClipboard 复制
+                    try {
+                        if (typeof GM_setClipboard === 'function') {
+                            GM_setClipboard(input.value);
+                            showCopyToast(e.clientX, e.clientY);
+                        } else {
+                            // 降级方案：使用 navigator.clipboard
+                            navigator.clipboard.writeText(input.value).then(() => {
+                                showCopyToast(e.clientX, e.clientY);
+                            }).catch(() => {
+                                // 最后降级方案：使用 document.execCommand
+                                const textarea = document.createElement('textarea');
+                                textarea.value = input.value;
+                                textarea.style.position = 'fixed';
+                                textarea.style.opacity = '0';
+                                document.body.appendChild(textarea);
+                                textarea.select();
+                                document.execCommand('copy');
+                                document.body.removeChild(textarea);
+                                showCopyToast(e.clientX, e.clientY);
+                            });
+                        }
+                    } catch (err) {
+                        console.error('复制失败:', err);
+                    }
+                }
+            });
+
+            // 添加可点击的视觉反馈样式
+            wrap.style.cursor = 'pointer';
+        });
+    }
+
+    // 显示复制提示
+    function showCopyToast(x, y) {
+        // 移除已存在的提示
+        const existingToast = document.querySelector('.cnb-copy-toast');
+        if (existingToast) {
+            existingToast.remove();
+        }
+
+        // 创建提示元素
+        const toast = document.createElement('div');
+        toast.className = 'cnb-copy-toast';
+        toast.textContent = '已复制！';
+        toast.style.cssText = `
+            position: fixed;
+            left: ${x}px;
+            top: ${y - 50}px;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            z-index: 99999;
+            pointer-events: none;
+            animation: cnbFadeIn 0.2s ease;
+        `;
+
+        // 添加动画样式
+        if (!document.getElementById('cnb-copy-toast-style')) {
+            const style = document.createElement('style');
+            style.id = 'cnb-copy-toast-style';
+            style.textContent = `
+                @keyframes cnbFadeIn {
+                    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+                    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        document.body.appendChild(toast);
+
+        // 1秒后移除
+        setTimeout(() => {
+            toast.style.transition = 'opacity 0.2s ease';
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 200);
+        }, 1000);
+    }
+
+    // 为下载按钮添加点击下载功能
+    function addDownloadButtonFeature() {
+        // 查找所有包含 download 图标的按钮
+        const downloadButtons = document.querySelectorAll('button svg#download');
+        downloadButtons.forEach(svg => {
+            const button = svg.closest('button');
+            if (!button || button.dataset.downloadEnabled) return;
+            button.dataset.downloadEnabled = 'true';
+
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // 获取当前页面 URL
+                const currentUrl = window.location.href;
+
+                // 将 blob 替换为 git/raw
+                const downloadUrl = currentUrl.replace(/\/blob\//, '/git/raw/');
+
+                // 创建隐藏的 a 标签触发下载
+                const link = document.createElement('a');
+                link.href = downloadUrl;
+                link.download = '';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        });
     }
 
     // 初始化
