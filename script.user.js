@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.4
+// @version      1.5.5
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -5490,6 +5490,25 @@ ${md}`, 'text');
         }
     }
 
+    // 增强 CNB 页面网格布局
+    function enhanceGridLayout() {
+        if (!isCnbDomain()) return;
+
+        // 修改 class="grid grid-cols-1 gap-4 mt-4 mb-8" 为 class="grid grid-cols-1 gap-4 mt-4 mb-8 xl:grid-cols-2"
+        document.querySelectorAll('.grid.grid-cols-1.gap-4.mt-4.mb-8').forEach(el => {
+            if (!el.classList.contains('xl:grid-cols-2')) {
+                el.classList.add('xl:grid-cols-2');
+            }
+        });
+
+        // 修改 class="grid gap-4 mt-4" 为 class="grid gap-4 mt-4 xl:grid-cols-2"
+        document.querySelectorAll('.grid.gap-4.mt-4').forEach(el => {
+            if (!el.classList.contains('xl:grid-cols-2')) {
+                el.classList.add('xl:grid-cols-2');
+            }
+        });
+    }
+
     // CNB 网站功能：添加"创建仓库"按钮
     function initCnbFeatures() {
         // 检查是否在 cnb.cool 网站
@@ -5506,6 +5525,7 @@ ${md}`, 'text');
             addCreateRepoButton();
             rewriteCnbGotoLinks();
             hideEmptyRepoContainer();
+            enhanceGridLayout();
         };
 
         // 等待页面加载完成
