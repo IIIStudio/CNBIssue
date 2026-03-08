@@ -3871,8 +3871,6 @@ ${md}`, 'text');
                 }
                 .cnb-clipwin-tabs {
                     position: fixed;
-                    left: 50%;
-                    top: 50%;
                     display: flex;
                     flex-direction: column;
                     z-index: 10011;
@@ -3888,8 +3886,10 @@ ${md}`, 'text');
                     font-size: 12px;
                     font-weight: 500;
                     color: #000;
-                    text-align: left;
-                    min-width: 60px;
+                    text-align: right;
+                    width: auto;
+                    flex-shrink: 0;
+                    align-self: flex-end;
                 }
                 .cnb-clipwin-tab:hover {
                     background: #e0e0e0;
@@ -4161,7 +4161,7 @@ ${md}`, 'text');
                 dialog.style.left = rect.left + 'px';
                 dialog.style.top = rect.top + 'px';
                 dialog.style.transform = 'none';
-                // 标签在窗口左侧，需要减去标签的宽度，向下偏移 29px
+                // 标签在窗口左侧，向下偏移 29px
                 const tabWidth = tabsContainer.offsetWidth || 80;
                 tabsContainer.style.left = (rect.left - tabWidth) + 'px';
                 tabsContainer.style.top = (rect.top + 29) + 'px';
@@ -4671,6 +4671,7 @@ ${md}`, 'text');
             void tabsContainer.offsetHeight;
             const rect = dialog.getBoundingClientRect();
             const tabWidth = tabsContainer.offsetWidth || 80;
+            // 将标签显示在对话框左侧
             tabsContainer.style.left = (rect.left - tabWidth) + 'px';
             tabsContainer.style.top = (rect.top + 29) + 'px';
             tabsContainer.style.transform = 'none';
@@ -5372,6 +5373,10 @@ ${md}`, 'text');
         return /\b(^|\.)cnb\.cool$/i.test(location.hostname);
     }
 
+    function isCnbHomepage() {
+        return location.hostname === 'cnb.cool' && (location.pathname === '/' || location.pathname === '');
+    }
+
     // 直达目标解码：获取 cnb.cool /数字?url= 的目标地址
     function getCnbGotoTarget(urlLike) {
         try {
@@ -5667,7 +5672,7 @@ ${md}`, 'text');
 
     // 添加"与我有关"标签
     function addMineTab() {
-        if (!isCnbDomain()) return;
+        if (!isCnbHomepage()) return;
 
         // 查找标签导航容器
         const navWrap = document.querySelector('.t-tabs__nav-wrap');
