@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.7
+// @version      1.5.8
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -4967,7 +4967,42 @@ ${md}`, 'text');
                 return;
             }
 
-            // 先删除所有标签（如果有）
+            // 先获取当前Issue的标签
+            const getCurrentLabels = () => {
+                return new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}`,
+                        headers: {
+                            'Authorization': `${CONFIG.accessToken}`,
+                            'Accept': 'application/vnd.cnb.api+json'
+                        },
+                        responseType: 'json',
+                        onload: function(res) {
+                            if (res.status >= 200 && res.status < 300) {
+                                const issueData = res.response || {};
+                                const currentLabels = issueData.labels || [];
+                                resolve(currentLabels.map(l => l.name || l));
+                            } else {
+                                resolve([]);
+                            }
+                        },
+                        onerror: function() {
+                            resolve([]);
+                        }
+                    });
+                });
+            };
+
+            // 比较两个标签数组是否相同
+            const labelsEqual = (arr1, arr2) => {
+                if (arr1.length !== arr2.length) return false;
+                const sorted1 = [...arr1].sort();
+                const sorted2 = [...arr2].sort();
+                return sorted1.every((val, index) => val === sorted2[index]);
+            };
+
+            // 删除所有标签（如果有）
             const deleteLabels = () => {
                 return new Promise((resolve, reject) => {
                     GM_xmlhttpRequest({
@@ -4979,11 +5014,9 @@ ${md}`, 'text');
                         },
                         responseType: 'json',
                         onload: function(res) {
-                            // 无论删除成功与否，都继续添加标签（可能本来就没有标签）
                             resolve();
                         },
                         onerror: function() {
-                            // 即使删除失败也继续
                             resolve();
                         }
                     });
@@ -5017,20 +5050,46 @@ ${md}`, 'text');
                 });
             };
 
-            // 执行删除和添加标签
-            deleteLabels()
-                .then(() => addLabels())
-                .then(() => afterUpdateCallback(true))
-                .catch((err) => {
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: `更新标签失败：${err}`,
-                            title: 'CNB Issue工具',
-                            timeout: 5000
-                        });
+            // 获取当前标签，比较后决定是否需要更新
+            getCurrentLabels()
+                .then(currentLabels => {
+                    // 如果标签相同，直接返回，不做任何操作
+                    if (labelsEqual(currentLabels, labels)) {
+                        afterUpdateCallback(true);
+                        return;
                     }
-                    // 标签更新失败，但Issue已更新，仍然返回成功
-                    afterUpdateCallback(true);
+
+                    // 标签有变化，执行删除和添加
+                    deleteLabels()
+                        .then(() => addLabels())
+                        .then(() => afterUpdateCallback(true))
+                        .catch((err) => {
+                            if (typeof GM_notification === 'function') {
+                                GM_notification({
+                                    text: `更新标签失败：${err}`,
+                                    title: 'CNB Issue工具',
+                                    timeout: 5000
+                                });
+                            }
+                            // 标签更新失败，但Issue已更新，仍然返回成功
+                            afterUpdateCallback(true);
+                        });
+                })
+                .catch(() => {
+                    // 获取当前标签失败，仍然执行更新
+                    deleteLabels()
+                        .then(() => addLabels())
+                        .then(() => afterUpdateCallback(true))
+                        .catch((err) => {
+                            if (typeof GM_notification === 'function') {
+                                GM_notification({
+                                    text: `更新标签失败：${err}`,
+                                    title: 'CNB Issue工具',
+                                    timeout: 5000
+                                });
+                            }
+                            afterUpdateCallback(true);
+                        });
                 });
         };
 
@@ -5819,6 +5878,9 @@ ${md}`, 'text');
     }
 
     function addCreateRepoButton() {
+        // 检查是否在 profile 页面，如果是则不添加按钮
+        if (location.pathname.startsWith('/profile/')) return;
+
         // 查找目标元素：包含"仓库墙"标题的父容器
         const targetDiv = document.querySelector('h1.font-semibold.text-l');
         if (!targetDiv) return;
