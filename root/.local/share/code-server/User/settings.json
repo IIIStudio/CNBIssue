@@ -1,0 +1,29 @@
+{
+  "security.workspace.trust.banner": "never",
+  "security.workspace.trust.enabled": false,
+  "yaml.schemas": {
+    "https://docs.cnb.cool/conf-schema-zh.json": ".cnb.yml",
+    "https://docs.cnb.cool/tag-deploy-schema-zh.json": "tag_deploy.yml",
+    "https://docs.cnb.cool/web-trigger-schema-zh.json": "web_trigger.yml"
+  },
+  "workbench.trustedDomains.promptInTrustedWorkspace": false,
+  "codingcopilot.welcomeMessage": "never",
+  "workbench.startupEditor": "none",
+  "extensions.autoUpdate": false,
+  "extensions.autoCheckUpdates": false,
+  "gitblame.inlineMessageEnabled": true,
+  "git.autorefresh": true,
+  "chat.commandCenter.enabled": false,
+  "yaml.customTags": [
+    "!reference sequence"
+  ],
+  "workbench.secondarysideBar.defaultvisibility": "hidden",
+  "git.enableSmartCommit": true,
+  "explorer.confirmDragAndDrop": false,
+  "git.confirmSync": false,
+  "window.menuBarVisibility": "classic",
+  "workbench.colorTheme": "Visual Studio Dark",
+  "editor.wordWrap": "on",
+  "workbench.secondarySideBar.defaultVisibility": "hidden",
+  "chat.disableAIFeatures": true
+}
