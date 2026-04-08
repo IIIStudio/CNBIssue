@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.8
+// @version      1.5.9
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -5786,29 +5786,34 @@ ${md}`, 'text');
     function enhanceExecuteButtonHover() {
         if (!isCnbDomain()) return;
 
-        // 查找包含"执行"或"新建"文本的按钮
+        // 查找包含"执行"或"新建"文本的按钮，且带有下拉箭头（chevron-down）的才是"新建"按钮
         document.querySelectorAll('.t-button--theme-default.t-button--variant-outline').forEach(btn => {
+            // 检查是否包含下拉箭头（只有"新建"按钮才有）
+            const hasChevronDown = btn.querySelector('svg#chevron-down');
             const buttonText = btn.textContent || '';
-            if (buttonText.includes('执行') || buttonText.includes('新建')) {
-                // 标记已处理，避免重复绑定
-                if (btn.dataset.enhanced) return;
-                btn.dataset.enhanced = 'true';
+            const isNewButton = buttonText.includes('新建') && hasChevronDown;
+            const isExecuteButton = buttonText.includes('执行');
 
-                // 鼠标进入时模拟点击打开弹窗
-                btn.addEventListener('mouseenter', () => {
-                    // 先添加 class
-                    btn.classList.add('t-popup-open');
-                    // 模拟点击事件触发弹窗
-                    setTimeout(() => {
-                        btn.click();
-                    }, 10);
-                }, { passive: true });
+            if (!isNewButton && !isExecuteButton) return;
 
-                // 鼠标离开时移除 class（不关闭弹窗，让用户可以交互）
-                btn.addEventListener('mouseleave', () => {
-                    btn.classList.remove('t-popup-open');
-                }, { passive: true });
-            }
+            // 标记已处理，避免重复绑定
+            if (btn.dataset.enhanced) return;
+            btn.dataset.enhanced = 'true';
+
+            // 鼠标进入时模拟点击打开弹窗
+            btn.addEventListener('mouseenter', () => {
+                // 先添加 class
+                btn.classList.add('t-popup-open');
+                // 模拟点击事件触发弹窗
+                setTimeout(() => {
+                    btn.click();
+                }, 10);
+            }, { passive: true });
+
+            // 鼠标离开时移除 class（不关闭弹窗，让用户可以交互）
+            btn.addEventListener('mouseleave', () => {
+                btn.classList.remove('t-popup-open');
+            }, { passive: true });
         });
     }
 
@@ -6056,6 +6061,39 @@ ${md}`, 'text');
                 link.click();
                 document.body.removeChild(link);
             });
+
+            // 在下载按钮旁边添加复制URL按钮，添加到下载按钮所在的 flex items-center flex-none 容器中
+            const parentDiv = button.parentElement;
+            if (parentDiv && !parentDiv.querySelector('.cnb-copy-url-btn')) {
+                // 创建复制按钮，添加到下载按钮的父容器中（同一个 flex items-center flex-none）
+                const copyBtn = document.createElement('button');
+                copyBtn.type = 'button';
+                copyBtn.className = 'cnb-copy-url-btn rounded-l-none -ml-[1px] hover:z-10 px-2 text-sec hover:text-brand-500 t-button t-button--theme-default t-button--variant-outline';
+                copyBtn.title = '复制URL';
+                copyBtn.innerHTML = `
+                    <span class="t-button__text">
+                        <svg id="cnb-copy-link" style="width:16px;height:16px" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+                            <g fill="none">
+                                <path d="M3.99995 1.92191C3.99995 1.33727 4.52001 1 4.9953 1H9.36584C9.63437 1 9.89162 1.108 10.0797 1.29969L13.7139 5.00415C13.8972 5.19093 13.9999 5.44209 14.0001 5.70375L14.0046 12.0777C14.0046 12.6624 13.4846 13 13.0093 13H4.99995C4.52472 13 4.00474 12.6628 4.00461 12.0783L3.99995 1.92191ZM4.99999 2L5.00457 12H13.0046L13.0003 6.01275H9.00004V2H4.99999ZM10 2.64645V5.01275H12.3215L10 2.64645Z" fill="currentColor"></path>
+                                <path d="M2 5.00001V14.0128C2 14.565 2.44772 15.0128 3 15.0128H11V14.0128L3 14.0128V5.00001H2Z" fill="currentColor"></path>
+                            </g>
+                        </svg>
+                    </span>
+                `;
+
+                copyBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // 获取下载链接（与下载按钮相同）
+                    const currentUrl = window.location.href;
+                    const downloadUrl = currentUrl.replace(/\/blob\//, '/git/raw/');
+                    navigator.clipboard.writeText(downloadUrl);
+                });
+
+                // 直接插入到下载按钮后面
+                parentDiv.appendChild(copyBtn);
+            }
         });
     }
 
