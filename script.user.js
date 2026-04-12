@@ -5626,16 +5626,6 @@ ${md}`, 'text');
         } catch (_) {}
     }
 
-    // 隐藏"暂无展示仓库"的空状态容器
-    function hideEmptyRepoContainer() {
-        const emptyText = document.querySelector('.text-base.text-ter.mt-4');
-        if (emptyText && emptyText.textContent === '暂无展示仓库') {
-            const container = emptyText.closest('.w-full.h-\\[328px\\]');
-            if (container) {
-                container.style.setProperty('display', 'none', 'important');
-            }
-        }
-    }
 
     // 增强 CNB 页面网格布局
     function enhanceGridLayout() {
@@ -5862,7 +5852,6 @@ ${md}`, 'text');
         const processPage = () => {
             addCreateRepoButton();
             rewriteCnbGotoLinks();
-            hideEmptyRepoContainer();
             enhanceGridLayout();
             addInputCopyFeature();
             addDownloadButtonFeature();
@@ -5886,11 +5875,12 @@ ${md}`, 'text');
         // 检查是否在 profile 页面，如果是则不添加按钮
         if (location.pathname.startsWith('/profile/')) return;
 
-        // 查找目标元素：包含"仓库墙"标题的父容器
+        // 查找目标元素：包含"仓库墙"标题
         const targetDiv = document.querySelector('h1.font-semibold.text-l');
         if (!targetDiv) return;
 
-        const parentDiv = targetDiv.closest('.flex.items-center.justify-between');
+        // 找到 flex gap-1 容器
+        const parentDiv = targetDiv.closest('.flex.items-center.gap-1');
         if (!parentDiv) return;
 
         // 检查是否已经添加过按钮
@@ -5899,16 +5889,6 @@ ${md}`, 'text');
         // 获取当前路径
         const pathParts = location.pathname.split('/').filter(Boolean);
         const groupPath = pathParts.join('/');
-
-        // 创建按钮容器
-        const buttonContainer = document.createElement('div');
-        buttonContainer.className = 'flex items-center gap-3';
-
-        // 移动原有的"更新仓库墙"按钮到新容器中
-        const existingButton = parentDiv.querySelector('button');
-        if (existingButton) {
-            buttonContainer.appendChild(existingButton);
-        }
 
         // 创建"创建仓库"按钮
         const createRepoBtn = document.createElement('button');
@@ -5928,12 +5908,18 @@ ${md}`, 'text');
             window.location.href = createRepoUrl;
         });
 
-        buttonContainer.appendChild(createRepoBtn);
+        // 在设置按钮前插入
+        const settingsBtn = parentDiv.querySelector('[id="settings"]');
+        if (settingsBtn && settingsBtn.parentElement) {
+            parentDiv.insertBefore(createRepoBtn, settingsBtn.parentElement);
+        } else {
+            parentDiv.appendChild(createRepoBtn);
+        }
 
-        // 清空原容器并添加新容器
-        parentDiv.innerHTML = '';
-        parentDiv.appendChild(targetDiv);
-        parentDiv.appendChild(buttonContainer);
+        // 在标题后添加一个 spacer，让按钮靠右
+        const spacer = document.createElement('div');
+        spacer.style.flex = '1';
+        targetDiv.after(spacer);
     }
 
     // 为 .t-input__wrap.flex-auto.min-w-0 输入框添加点击复制功能
