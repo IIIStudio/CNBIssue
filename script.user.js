@@ -5883,8 +5883,12 @@ ${md}`, 'text');
         const parentDiv = targetDiv.closest('.flex.items-center.gap-1');
         if (!parentDiv) return;
 
-        // 检查是否已经添加过按钮
+        // 检查是否已经存在原生创建仓库按钮
         if (parentDiv.querySelector('.cnb-create-repo-btn')) return;
+
+        // 检查是否存在设置按钮，如果没有设置按钮也不需要添加创建仓库按钮
+        const settingsBtn = parentDiv.querySelector('[id="settings"]');
+        if (!settingsBtn) return;
 
         // 获取当前路径
         const pathParts = location.pathname.split('/').filter(Boolean);
@@ -5909,7 +5913,6 @@ ${md}`, 'text');
         });
 
         // 在设置按钮前插入
-        const settingsBtn = parentDiv.querySelector('[id="settings"]');
         if (settingsBtn && settingsBtn.parentElement) {
             parentDiv.insertBefore(createRepoBtn, settingsBtn.parentElement);
         } else {
