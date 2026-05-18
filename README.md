@@ -6,6 +6,8 @@
 
 B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 
+把部分作用在CNB上面的移除到 https://cnb.cool/IIIStudio/Code/Greasemonkey/CNB 了
+
 ## 功能特点
 
 - 🔍 **智能区域选择** - 可视化选择网页任意区域
