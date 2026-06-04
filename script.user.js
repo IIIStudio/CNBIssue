@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.14
+// @version      1.5.15
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -5317,52 +5317,57 @@ ${md}`, 'text');
         });
     }
 
-    // 2. 上传图片到 OSS
+    // 2. 上传图片到 OSS（使用 GM_xmlhttpRequest 绕过 CORS）
     function uploadImageToOss(uploadInfo, fileData, callback) {
         if (!uploadInfo?.upload_url) {
             if (callback) callback(null, '上传凭证无效');
             return;
         }
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', uploadInfo.upload_url);
-        xhr.setRequestHeader('Content-Type', fileData.type || 'application/octet-stream');
+        // 构建请求头
+        const headers = {
+            'Content-Type': fileData.type || 'application/octet-stream'
+        };
 
         // 添加额外的表单参数作为请求头
         if (uploadInfo.form) {
             Object.entries(uploadInfo.form).forEach(([key, value]) => {
                 if (key.toLowerCase() !== 'file') {
-                    xhr.setRequestHeader(key, value);
+                    headers[key] = value;
                 }
             });
         }
 
-        xhr.onload = function() {
-            if (xhr.status >= 200 && xhr.status < 300) {
-                const relativePath = uploadInfo.assets?.path || '';
-                const fullUrl = relativePath.includes(CONFIG.repoPath)
-                    ? `https://cnb.cool${relativePath}`
-                    : `https://cnb.cool/${CONFIG.repoPath}${relativePath}`;
-                if (callback) callback(fullUrl, null);
-                return;
-            }
-
-            let errorMsg = `HTTP ${xhr.status}`;
-            try {
-                if (xhr.responseText) {
-                    const err = JSON.parse(xhr.responseText);
-                    if (err?.message) errorMsg = err.message;
+        GM_xmlhttpRequest({
+            method: 'PUT',
+            url: uploadInfo.upload_url,
+            headers: headers,
+            data: fileData,
+            binary: (fileData instanceof Blob),
+            onload: function(response) {
+                if (response.status >= 200 && response.status < 300) {
+                    const relativePath = uploadInfo.assets?.path || '';
+                    const fullUrl = relativePath.includes(CONFIG.repoPath)
+                        ? `https://cnb.cool${relativePath}`
+                        : `https://cnb.cool/${CONFIG.repoPath}${relativePath}`;
+                    if (callback) callback(fullUrl, null);
+                    return;
                 }
-            } catch (_) {}
 
-            if (callback) callback(null, errorMsg);
-        };
+                let errorMsg = `HTTP ${response.status}`;
+                try {
+                    if (response.responseText) {
+                        const err = JSON.parse(response.responseText);
+                        if (err?.message) errorMsg = err.message;
+                    }
+                } catch (_) {}
 
-        xhr.onerror = function() {
-            if (callback) callback(null, '图片上传失败');
-        };
-
-        xhr.send(fileData);
+                if (callback) callback(null, errorMsg);
+            },
+            onerror: function() {
+                if (callback) callback(null, '图片上传失败');
+            }
+        });
     }
 
     // 3. 获取图片数据（从 URL 或 base64）
@@ -5390,44 +5395,26 @@ ${md}`, 'text');
             }
         }
 
-        // 通过 URL 获取图片 - 使用 fetch
-        fetch(imageUrl, {
+        // 通过 URL 获取图片 - 使用 GM_xmlhttpRequest 绕过 CORS
+        GM_xmlhttpRequest({
             method: 'GET',
-            mode: 'cors',
-            credentials: 'omit'
-        })
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
-            }
-            return response.blob();
-        })
-        .then(blob => {
-            if (callback) callback(blob, null);
-        })
-        .catch(error => {
-            // 如果 fetch 失败，尝试使用 GM_xmlhttpRequest
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: imageUrl,
-                responseType: 'arraybuffer',
-                onload: function(response) {
-                    if (response.status >= 200 && response.status < 300) {
-                        const arrayBuffer = response.response;
-                        if (arrayBuffer) {
-                            const blob = new Blob([arrayBuffer]);
-                            if (callback) callback(blob, null);
-                        } else {
-                            if (callback) callback(null, '获取图片数据失败');
-                        }
+            url: imageUrl,
+            responseType: 'blob',
+            onload: function(response) {
+                if (response.status >= 200 && response.status < 300) {
+                    const blob = response.response;
+                    if (blob) {
+                        if (callback) callback(blob, null);
                     } else {
-                        if (callback) callback(null, `HTTP ${response.status}`);
+                        if (callback) callback(null, '获取图片数据失败');
                     }
-                },
-                onerror: function() {
-                    if (callback) callback(null, '获取图片失败');
+                } else {
+                    if (callback) callback(null, `HTTP ${response.status}`);
                 }
-            });
+            },
+            onerror: function() {
+                if (callback) callback(null, '获取图片失败');
+            }
         });
     }
 
