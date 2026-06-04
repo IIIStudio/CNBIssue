@@ -48,12 +48,17 @@ main:
             echo "v$VERSION"
           exports:
             info: FILE_NAME
+        - name: changelog
+          image: cnbcool/changelog
+          exports:
+            latestChangeLog: LATEST_CHANGE_LOG
         - name: 创建新标签
           type: git:release
           options:
             overlying: true
             # latest: true # 是否将 `release` 设置为最新版本
             tag: ${FILE_NAME}
+            description: ${LATEST_CHANGE_LOG}
         - name: 上传附件
           image: cnbcool/attachments:latest
           settings:
