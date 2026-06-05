@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.15
+// @version      1.5.16
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -1089,13 +1089,13 @@
 
         cancelBtn.addEventListener('click', stopAreaSelection);
 
-        // 添加鼠标移动和点击事件
-        document.addEventListener('mouseover', handleMouseOver);
-        document.addEventListener('mouseout', handleMouseOut);
-        document.addEventListener('click', handleElementClick);
+        // 添加鼠标移动和点击事件（使用捕获阶段，防止页面 stopPropagation 拦截）
+        document.addEventListener('mouseover', handleMouseOver, true);
+        document.addEventListener('mouseout', handleMouseOut, true);
+        document.addEventListener('click', handleElementClick, true);
 
-        // ESC键取消选择
-        document.addEventListener('keydown', handleKeyDown);
+        // ESC键取消选择（捕获阶段）
+        document.addEventListener('keydown', handleKeyDown, true);
     }
 
     // 停止区域选择模式
@@ -1122,11 +1122,11 @@
         lastSelectedElement = null;
         selectedElement = null;
 
-        // 移除事件监听
-        document.removeEventListener('mouseover', handleMouseOver);
-        document.removeEventListener('mouseout', handleMouseOut);
-        document.removeEventListener('click', handleElementClick);
-        document.removeEventListener('keydown', handleKeyDown);
+        // 移除事件监听（与注册时一致使用捕获阶段）
+        document.removeEventListener('mouseover', handleMouseOver, true);
+        document.removeEventListener('mouseout', handleMouseOut, true);
+        document.removeEventListener('click', handleElementClick, true);
+        document.removeEventListener('keydown', handleKeyDown, true);
     }
 
     // 处理鼠标悬停
