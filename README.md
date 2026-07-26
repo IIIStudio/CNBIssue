@@ -37,7 +37,7 @@ B站演示：https://www.bilibili.com/video/BV1AocxzPEr3/
 - **仓库路径**：格式为 `owner/repo`，例如 `IIIStudio/Demo`
 - **访问令牌**：在 [CNB 个人设置](https://cnb.cool/profile/token) 中创建
   - 选择指定仓库
-  - 权限范围设置为 `repo-issue:rw,repo-contents:rw,repo-notes:rw`
+  - 权限范围设置为 `repo-code:rw,repo-notes:rw,repo-issue:rw,repo-pr:rw`（现上传图片需要repo-code:rw权限）
 
 ### 可选设置
 - **标签管理**：先在仓库的 `-/labels` 中设置标签，然后在工具中输入标签名称

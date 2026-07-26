@@ -2965,7 +2965,7 @@ ${escapeHtml(selectedContent)}</textarea>
             <div>
                 <label>访问令牌 (accessToken):</label>
                 <input class="cnb-control" type="password" id="cnb-setting-token" placeholder="输入访问令牌" value="${escapeHtml(currentToken)}">
-                <div class="cnb-hint">注意：上传图片需要访问令牌具有 <strong>repo-contents:rw</strong> 权限</div>
+                <div class="cnb-hint">注意：上传图片需要访问令牌具有 <strong>repo-code:rw</strong> 权限</div>
             </div>
             <div>
                 <label>剪贴板位置（Issue编号）:</label>
@@ -5299,10 +5299,10 @@ ${md}`, 'text');
 
                 // 特殊处理权限错误 (errcode: 7)
                 if (err?.errcode === 7 && err?.errmsg?.includes('票据授权范围')) {
-                    errorMsg = '访问令牌缺少 repo-contents:rw 权限';
+                    errorMsg = '访问令牌缺少 repo-code:rw 权限';
                     if (typeof GM_notification === 'function') {
                         GM_notification({
-                            text: '图片上传失败：访问令牌缺少 repo-contents:rw 权限',
+                            text: '图片上传失败：访问令牌缺少 repo-code:rw 权限',
                             title: 'CNB Issue工具',
                             timeout: 5000
                         });
