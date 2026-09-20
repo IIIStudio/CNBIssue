@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.17
+// @version      1.5.18
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -300,14 +300,6 @@
         }
         .cnb-dock .cnb-dock-btn:active {
             transform: translate(1px, 1px);
-        }
-        .cnb-dock-trigger {
-            position: fixed;
-            left: 0;
-            top: 40%;
-            width: 20px;
-            height: 150px;
-            z-index: 10001;
         }
     `);
 
@@ -990,37 +982,34 @@
 
         document.body.appendChild(dock);
 
-        // 创建左边缘触发区域
-        const trigger = document.createElement('div');
-        trigger.className = 'cnb-dock-trigger';
-        document.body.appendChild(trigger);
-
-        // 等待dock完全渲染后，设置触发区域的尺寸
-        setTimeout(() => {
-            const dockRect = dock.getBoundingClientRect();
-            trigger.style.top = dockRect.top + 'px';
-            trigger.style.height = dockRect.height + 'px';
-        }, 0);
-
-        // 鼠标移到触发区域时显示dock（延迟显示，避免过于敏感）
-        trigger.addEventListener('mouseenter', () => {
-            // 清除之前的定时器
-            if (__CNB_DOCK_SHOW_TIMER) {
-                clearTimeout(__CNB_DOCK_SHOW_TIMER);
+        // 仅当鼠标真正移动到浏览器最左侧极窄边缘（且位于 dock 垂直范围内）时才显示 dock。
+        // 使用 mousemove 而非给热区绑定 mouseenter：热区只要光标在其上方就会触发，
+        // 导致页面中的小窗口/浮层恰好出现在光标下方时被误触发。
+        const DOCK_EDGE_PX = 3;
+        const handleEdgeMouseMove = (e) => {
+            // 不在最左边缘：取消尚未触发的延迟显示
+            if (e.clientX > DOCK_EDGE_PX) {
+                if (__CNB_DOCK_SHOW_TIMER) {
+                    clearTimeout(__CNB_DOCK_SHOW_TIMER);
+                    __CNB_DOCK_SHOW_TIMER = null;
+                }
+                return;
             }
-            // 延迟300ms后显示
+
+            // 仅在 dock 所在的垂直范围内触发，避免页面其他位置误触
+            const dockRect = dock.getBoundingClientRect();
+            if (e.clientY < dockRect.top || e.clientY > dockRect.bottom) return;
+
+            if (dock.classList.contains('cnb-dock--visible') || __CNB_DOCK_SHOW_TIMER) return;
+
+            // 延迟300ms后显示，避免过于敏感
             __CNB_DOCK_SHOW_TIMER = setTimeout(() => {
+                __CNB_DOCK_SHOW_TIMER = null;
                 dock.classList.add('cnb-dock--visible');
             }, 300);
-        });
-
-        // 鼠标离开触发区域时取消显示
-        trigger.addEventListener('mouseleave', () => {
-            if (__CNB_DOCK_SHOW_TIMER) {
-                clearTimeout(__CNB_DOCK_SHOW_TIMER);
-                __CNB_DOCK_SHOW_TIMER = null;
-            }
-        });
+        };
+        document.addEventListener('mousemove', handleEdgeMouseMove, true);
+        dock._edgeMouseMoveHandler = handleEdgeMouseMove;
 
         // 鼠标进入dock时立即显示（并取消延迟）
         dock.addEventListener('mouseenter', () => {
@@ -1038,8 +1027,8 @@
 
         // 点击页面其他地方时隐藏dock
         const handleClickOutside = (e) => {
-            // 如果点击的不是 dock 内部，也不是触发区域，则隐藏
-            if (!dock.contains(e.target) && !trigger.contains(e.target)) {
+            // 点击 dock 之外的地方时隐藏
+            if (!dock.contains(e.target)) {
                 dock.classList.remove('cnb-dock--visible');
             }
         };
