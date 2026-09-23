@@ -1,10 +1,11 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.18
+// @version      1.5.19
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
+// @noframes
 // @grant        GM_xmlhttpRequest
 // @grant        GM_notification
 // @grant        GM_setClipboard
@@ -257,42 +258,55 @@
     /* 左侧贴边 Dock 控制栏（自动隐藏，鼠标移到左边缘显示） - 扁平黑白配色 */
     GM_addStyle(`
         .cnb-dock {
-            position: fixed;
-            left: -200px;
-            top: 40%;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            padding: 6px 6px 6px 10px;
-            background: #fff;
-            border: 2px solid #000;
-            border-left: none;
-            border-radius: 0 0 0 0;
-            box-shadow: 3px 3px 0 #000;
-            z-index: 10002;
-            transition: left .15s ease, opacity .15s ease;
+            position: fixed !important;
+            left: -200px !important;
+            right: auto !important;
+            top: 40% !important;
+            bottom: auto !important;
+            margin: 0 !important;
+            transform: none !important;
+            float: none !important;
+            display: flex !important;
+            flex-direction: column !important;
+            gap: 6px !important;
+            padding: 6px 6px 6px 10px !important;
+            background: #fff !important;
+            border: 2px solid #000 !important;
+            border-left: none !important;
+            border-radius: 0 !important;
+            box-shadow: 3px 3px 0 #000 !important;
+            z-index: 10002 !important;
+            transition: left .15s ease, opacity .15s ease !important;
             opacity: 0.9;
+            /* 隐藏态：完全不可见、不拦截鼠标事件，避免误触发或被站点样式挤到页面中间 */
+            visibility: hidden;
+            pointer-events: none;
         }
         .cnb-dock:hover,
         .cnb-dock.cnb-dock--visible {
-            left: 0;
+            left: 0 !important;
             opacity: 1;
+            visibility: visible;
+            pointer-events: auto;
         }
         .cnb-dock .cnb-dock-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 64px;
-            height: 32px;
-            padding: 0 10px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #000;
-            background: #fff;
-            border: 2px solid #000;
-            border-radius: 0;
-            cursor: pointer;
-            transition: all 0.1s ease;
+            position: static !important;
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            min-width: 64px !important;
+            height: 32px !important;
+            margin: 0 !important;
+            padding: 0 10px !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            color: #000 !important;
+            background: #fff !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
+            box-sizing: border-box !important;
+            cursor: pointer !important;
+            transition: all 0.1s ease !important;
         }
         .cnb-dock .cnb-dock-btn:hover {
             background: #000;
@@ -5530,6 +5544,13 @@ ${md}`, 'text');
 
     // 初始化
     function init() {
+        // 仅在顶层文档注入 UI：@match 匹配所有页面，若不做限制，页面内的每个
+        // iframe/webview 都会各自生成一个贴边 Dock，从 iframe 自身左边缘滑出，
+        // 视觉上就像"按钮组出现在页面中间"。（同时脚本已加 @noframes 双保险）
+        let isTopFrame = true;
+        try { isTopFrame = (window.top === window.self); } catch (_) { isTopFrame = false; }
+        if (!isTopFrame) return;
+
         loadPersistedConfig();
         createFloatingButton();
         document.addEventListener('keydown', globalHotkeyHandler, true);
