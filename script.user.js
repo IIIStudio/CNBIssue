@@ -48,18 +48,18 @@
 
     // 筛选标签按钮样式（创建弹窗与 Issue 列表共用，胶囊风格）
     const CNB_FILTER_BTN_CSS = `
-        .cnb-issue-dialog .cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }
+        .cnb-issue-dialog .cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:4px !important; }
         .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn {
             display: inline-flex !important;
             align-items: center !important;
-            gap: 6px !important;
+            gap: 4px !important;
             margin: 0 !important;
-            padding: 4px 10px !important;
+            padding: 2px 8px !important;
             border: 1px solid #d0d7de !important;
             border-radius: 9999px !important;
             background: #fff !important;
             color: #24292f !important;
-            font-size: 13px !important;
+            font-size: 12px !important;
             line-height: 1.2 !important;
             white-space: nowrap !important;
             vertical-align: middle !important;
@@ -109,7 +109,7 @@
             background: #fff !important;
             border: 2px solid #000 !important;
             border-radius: 0 !important;
-            padding: 16px !important;
+            padding: 10px 12px !important;
             z-index: 2147483641 !important;
             box-shadow: 4px 4px 0 #000 !important;
             min-width: 500px !important;
@@ -118,18 +118,18 @@
             overflow: auto !important;
         }
         .cnb-issue-dialog h3 {
-            margin: 0 0 12px 0;
+            margin: 0 0 6px 0;
             color: #000;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 1px;
         }
         .cnb-issue-dialog textarea {
             width: 100%;
-            height: 300px;
-            margin: 8px 0;
-            padding: 10px;
+            height: 200px;
+            margin: 4px 0;
+            padding: 8px;
             border: 2px solid #000;
             border-radius: 0;
             resize: vertical;
@@ -146,8 +146,8 @@
         }
         .cnb-issue-dialog input {
             width: 100%;
-            margin: 8px 0;
-            padding: 8px 10px;
+            margin: 4px 0;
+            padding: 6px 8px;
             border: 2px solid #000;
             border-radius: 0;
             background: #fff;
@@ -161,12 +161,12 @@
         .cnb-issue-dialog-buttons {
             display: flex;
             justify-content: flex-end;
-            gap: 10px;
-            margin-top: 12px;
+            gap: 6px;
+            margin-top: 8px;
         }
         /* 仅底部操作按钮生效，避免影响设置区的小按钮与"×" */
         .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
-            padding: 8px 16px;
+            padding: 4px 12px;
             border: 2px solid #000;
             border-radius: 0;
             cursor: pointer;
@@ -286,8 +286,8 @@
             float: none !important;
             display: flex !important;
             flex-direction: column !important;
-            gap: 6px !important;
-            padding: 6px 6px 6px 10px !important;
+            gap: 4px !important;
+            padding: 4px 4px 4px 8px !important;
             background: #fff !important;
             border: 2px solid #000 !important;
             border-left: none !important;
@@ -312,10 +312,10 @@
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
-            min-width: 64px !important;
-            height: 32px !important;
+            min-width: 54px !important;
+            height: 28px !important;
             margin: 0 !important;
-            padding: 0 10px !important;
+            padding: 0 8px !important;
             font-size: 12px !important;
             font-weight: 600 !important;
             color: #000 !important;
@@ -346,26 +346,31 @@
             word-spacing: normal !important;
         }
 
+        /* 对话框内标签统一字号 */
+        .cnb-issue-dialog label {
+            font-size: 13px !important;
+        }
+
         .cnb-issue-dialog input.cnb-control,
         .cnb-issue-dialog textarea.cnb-control {
             box-sizing: border-box !important;
             width: 100% !important;
-            margin: 8px 0 !important;
-            padding: 10px 12px !important;
+            margin: 4px 0 !important;
+            padding: 5px 10px !important;
             border: 2px solid #000 !important;
             border-radius: 0 !important;
             background: #fff !important;
             color: #000 !important;
-            font: normal 14px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif !important;
+            font: normal 13px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif !important;
             outline: none !important;
             appearance: none !important;
             -webkit-appearance: none !important;
             -moz-appearance: none !important;
             transition: all 0.1s ease !important;
-            height: 36px !important;
+            height: 30px !important;
         }
         .cnb-issue-dialog textarea.cnb-control {
-            min-height: 300px !important;
+            min-height: 180px !important;
             resize: vertical !important;
             font-family: 'Monaco','Menlo','Ubuntu Mono',monospace !important;
             font-size: 12px !important;
@@ -377,11 +382,11 @@
         }
         /* 仅底部操作按钮生效，避免影响设置区的小按钮与"×" */
         .cnb-issue-dialog .cnb-issue-dialog-buttons > button {
-            padding: 5px 15x !important;
+            padding: 4px 12px !important;
             border: 2px solid #000 !important;
             border-radius: 0 !important;
             cursor: pointer !important;
-            font-size: 14px !important;
+            font-size: 13px !important;
             font-weight: 600 !important;
             transition: all 0.1s ease !important;
             background: #fff !important;
@@ -401,15 +406,15 @@
         .cnb-issue-btn-done:hover { background: #333 !important; color: #fff !important; }
 
         /* 标签选择按钮 - 扁平黑白配色 */
-        #cnb-issue-tags { margin-top: 6px !important; }
+        #cnb-issue-tags { margin-top: 2px !important; }
         .cnb-tag-btn {
-            margin: 4px !important;
-            padding: 1px 8px !important;
+            margin: 2px !important;
+            padding: 0 6px !important;
             border: 2px solid #000 !important;
             border-radius: 0 !important;
             background: #fff !important;
             color: #000 !important;
-            font-size: 13px !important;
+            font-size: 12px !important;
             font-weight: 500 !important;
             cursor: pointer !important;
             transition: all 0.1s ease !important;
@@ -425,18 +430,18 @@
         }
 
         /* 设置页：标签胶囊与删除按钮 - 扁平黑白配色 */
-        .cnb-tags-list { margin-top: 8px !important; }
+        .cnb-tags-list { margin-top: 4px !important; }
         .cnb-tag-pill {
             display: inline-flex !important;
             align-items: center !important;
-            gap: 6px !important;
-            margin: 4px !important;
-            padding: 1px 8px !important;
+            gap: 4px !important;
+            margin: 2px !important;
+            padding: 0 6px !important;
             border: 2px solid #000 !important;
             border-radius: 0 !important;
             background: #fff !important;
             color: #000 !important;
-            font-size: 13px !important;
+            font-size: 12px !important;
             font-weight: 500 !important;
             line-height: 1.2 !important;
             white-space: nowrap !important;
@@ -455,14 +460,14 @@
             background: transparent !important;
             cursor: pointer !important;
             color: #000 !important;
-            font-size: 18px !important;
+            font-size: 14px !important;
             font-weight: 700 !important;
             display: inline-flex !important;
             align-items: center !important;
             justify-content: center !important;
-            height: 20px !important;
+            height: 16px !important;
             padding: 0 4px !important;
-            line-height: 20px !important;
+            line-height: 16px !important;
             border-radius: 0 !important;
             box-sizing: border-box !important;
             white-space: nowrap !important;
@@ -475,7 +480,7 @@
         /* 设置页：输入与按钮排列 - 扁平黑白配色 */
         .cnb-flex {
             display: flex !important;
-            gap: 8px !important;
+            gap: 6px !important;
             align-items: center !important;
             flex-wrap: nowrap !important;
         }
@@ -484,15 +489,15 @@
             align-items: center !important;
             justify-content: center !important;
             white-space: nowrap !important;
-            height: 36px !important;
-            padding: 0 16px !important;
+            height: 30px !important;
+            padding: 0 12px !important;
             box-sizing: border-box !important;
             border-radius: 0 !important;
             border: 2px solid #000 !important;
             background: #000 !important;
             color: #fff !important;
             cursor: pointer !important;
-            font-size: 14px !important;
+            font-size: 13px !important;
             font-weight: 600 !important;
             flex: 0 0 auto !important;
             min-width: max-content !important;
@@ -509,7 +514,7 @@
 
         /* 让输入框可伸缩并等高 */
         .cnb-flex .cnb-control#cnb-setting-newtag {
-            height: 36px !important;
+            height: 30px !important;
             flex: 1 1 auto !important;
         }
 
@@ -529,16 +534,16 @@
         .cnb-image-upload-toggle {
             display: flex !important;
             align-items: center !important;
-            gap: 8px !important;
-            margin-top: 5px !important;
+            gap: 6px !important;
+            margin-top: 2px !important;
         }
 
         /* 开关样式 - 扁平黑白配色 */
         .cnb-toggle-switch {
             position: relative !important;
             display: inline-block !important;
-            width: 48px !important;
-            height: 26px !important;
+            width: 40px !important;
+            height: 22px !important;
         }
 
         .cnb-toggle-switch input {
@@ -563,10 +568,10 @@
         .cnb-toggle-slider:before {
             position: absolute !important;
             content: "" !important;
-            height: 16px !important;
-            width: 16px !important;
-            left: 4px !important;
-            bottom: 4px !important;
+            height: 12px !important;
+            width: 12px !important;
+            left: 3px !important;
+            bottom: 3px !important;
             background-color: #000 !important;
             transition: .15s !important;
             border-radius: 0 !important;
@@ -577,7 +582,7 @@
         }
 
         .cnb-toggle-switch input:checked + .cnb-toggle-slider:before {
-            transform: translateX(22px) !important;
+            transform: translateX(18px) !important;
             background-color: #fff !important;
         }
 
@@ -592,8 +597,8 @@
         .cnb-switch {
             position: relative !important;
             display: inline-block !important;
-            width: 44px !important;
-            height: 24px !important;
+            width: 36px !important;
+            height: 20px !important;
             vertical-align: middle !important;
         }
         .cnb-switch input {
@@ -615,10 +620,10 @@
         .cnb-switch-slider::before {
             content: '' !important;
             position: absolute !important;
-            left: 4px !important;
-            top: 4px !important;
-            width: 14px !important;
-            height: 14px !important;
+            left: 3px !important;
+            top: 3px !important;
+            width: 10px !important;
+            height: 10px !important;
             background: #000 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
@@ -628,7 +633,7 @@
             background: #000 !important;
         }
         .cnb-switch input:checked + .cnb-switch-slider::before {
-            transform: translateX(20px) !important;
+            transform: translateX(16px) !important;
             background: #fff !important;
         }
 
@@ -1335,14 +1340,14 @@ ${escapeHtml(selectedContent)}</textarea>
                     </label>
                     <div class="cnb-hint" id="cnb-image-upload-status">检测到 ${uniqueImages.length} 张图片，点击创建时将自动上传</div>
                 </div>` : ''}
-                <div style="margin-top: 10px;">
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <div style="margin-top: 6px;">
+                    <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                         <button type="button" class="cnb-tag-btn" id="cnb-attach-pick">添加附件</button>
                         <input type="file" id="cnb-attach-input" multiple style="display: none;">
                         <span class="cnb-hint">可添加本地文件（如 zip），创建 Issue / 评论时自动上传并插入链接</span>
                     </div>
                     <div id="cnb-attach-list" style="margin-top: 4px;"></div>
-                    ${detectedFiles.length > 0 ? `<div class="cnb-image-upload-toggle" style="margin-top: 8px;">
+                    ${detectedFiles.length > 0 ? `<div class="cnb-image-upload-toggle" style="margin-top: 4px;">
                         <label class="cnb-toggle-switch">
                             <input type="checkbox" id="cnb-file-upload-toggle" ${CONFIG.uploadFilesEnabled ? 'checked' : ''}>
                             <span class="cnb-toggle-slider"></span>
@@ -1350,7 +1355,7 @@ ${escapeHtml(selectedContent)}</textarea>
                         <div class="cnb-hint" id="cnb-file-upload-status">检测到 ${detectedFiles.length} 个附件链接，点击创建时将自动上传</div>
                     </div>` : ''}
                 </div>
-                <div style="display: flex; align-items: center; gap: 20px; margin-top: 10px;">
+                <div style="display: flex; align-items: center; gap: 12px; margin-top: 6px;">
                     <div class="cnb-image-upload-toggle" style="margin: 0;">
                         <label class="cnb-toggle-switch">
                             <input type="checkbox" id="cnb-edit-toggle">
@@ -3412,9 +3417,9 @@ ${escapeHtml(selectedContent)}</textarea>
         dialog.innerHTML = `
             <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:10px; top:10px; border:none; background:transparent; color:#000; font-size:20px; line-height:1; cursor:pointer; font-weight:700;">×</button>
             <h3>Issue 列表</h3>
-            <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:6px 0;"></div>
+            <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:4px 0;"></div>
             <div id="cnb-issue-list" style="height:55vh; overflow:auto; border:2px solid #000; border-radius:0;"></div>
-            <div id="cnb-issue-pagination" style="margin-top:10px;display:flex;justify-content:center;gap:10px;"></div>
+            <div id="cnb-issue-pagination" style="margin-top:6px;display:flex;justify-content:center;gap:6px;"></div>
         `;
 
         // 固定对话框尺寸，防止点击筛选按钮时窗口抖动
@@ -3533,7 +3538,7 @@ ${escapeHtml(selectedContent)}</textarea>
                 const labelNames = Array.isArray(it.labels) ? it.labels.map(l => l.name) : [];
 
                 const row = document.createElement('div');
-                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:2px solid #000;';
+                row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:4px 8px;border-bottom:2px solid #000;';
 
                 const left = document.createElement('div');
                 left.style.cssText = 'min-width:0;flex:1;font-size:13px;color:#000;display:flex;gap:6px !important;align-items:center;';
@@ -3560,11 +3565,11 @@ ${escapeHtml(selectedContent)}</textarea>
                 // 复制按钮：关闭 Issue(完成) 并复制 title + body(清理为Markdown) 到剪贴板
                 const btnCopy = document.createElement('button');
                 btnCopy.type = 'button';
-                btnCopy.textContent = '📋';
-                btnCopy.title = '复制到剪贴板';
-                btnCopy.style.cssText = 'margin-left:6px;display:inline-flex;align-items:center;justify-content:center;padding:3px 6px;border:2px solid #000;background:#fff;color:#000;font-size:11px;font-weight:600;cursor:pointer;line-height:1;transition:all 0.1s ease;';
-                btnCopy.addEventListener('mouseover', () => { btnCopy.style.background = '#000'; btnCopy.style.color = '#fff'; });
-                btnCopy.addEventListener('mouseout', () => { btnCopy.style.background = '#fff'; btnCopy.style.color = '#000'; });
+                btnCopy.textContent = '复制';
+                btnCopy.title = '关闭 Issue 并复制到剪贴板';
+                btnCopy.style.cssText = 'margin-left:6px;display:inline-flex;align-items:center;justify-content:center;height:20px;padding:0 8px;border:1px solid #d0d7de;border-radius:4px;background:#f6f8fa;color:#57606a;font-size:11px;font-weight:500;cursor:pointer;line-height:1;transition:all 0.1s ease;';
+                btnCopy.addEventListener('mouseover', () => { btnCopy.style.background = '#eaeef2'; btnCopy.style.color = '#24292f'; btnCopy.style.borderColor = '#afb8c1'; });
+                btnCopy.addEventListener('mouseout', () => { btnCopy.style.background = '#f6f8fa'; btnCopy.style.color = '#57606a'; btnCopy.style.borderColor = '#d0d7de'; });
                 btnCopy.addEventListener('click', () => {
                     if (btnCopy.disabled) return;
                     btnCopy.disabled = true;
@@ -3654,7 +3659,7 @@ ${md}`, 'text');
             if (currentPage > 1) {
                 const prevBtn = document.createElement('button');
                 prevBtn.textContent = '上一页';
-                prevBtn.style.cssText = 'padding:4px 8px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
+                prevBtn.style.cssText = 'padding:2px 6px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
                 prevBtn.addEventListener('click', () => {
                     if (currentPage > 1) {
                         currentPage--;
@@ -3668,7 +3673,7 @@ ${md}`, 'text');
             if (hasMore) {
                 const nextBtn = document.createElement('button');
                 nextBtn.textContent = '下一页';
-                nextBtn.style.cssText = 'padding:4px 8px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
+                nextBtn.style.cssText = 'padding:2px 6px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
                 nextBtn.addEventListener('click', () => {
                     currentPage++;
                     loadIssues(currentPage);
@@ -3814,7 +3819,7 @@ ${md}`, 'text');
                     fill: #2ea043 !important;
                 }
                 .cnb-clipwin-content {
-                    padding: 8px;
+                    padding: 5px;
                     overflow: auto;
                 }
                 .cnb-clipwin-tabs {
@@ -3827,9 +3832,9 @@ ${md}`, 'text');
                     transition: opacity 0.3s ease;
                 }
                 .cnb-clipwin-tab {
-                    margin: 2px 0;
-                    padding: 5px 12px;
-                    padding-left: 12px;
+                    margin: 1px 0;
+                    padding: 3px 10px;
+                    padding-left: 10px;
                     background: #f5f5f5;
                     border: 2px solid #000;
                     border-right: none;
@@ -3860,13 +3865,13 @@ ${md}`, 'text');
                 }
                 .cnb-clipwin-actions {
                     border-top: 2px solid #000;
-                    padding: 8px 12px;
-                    display: flex; gap: 6px; justify-content: flex-end;
+                    padding: 5px 8px;
+                    display: flex; gap: 4px; justify-content: flex-end;
                     background: #fff;
                 }
                 .cnb-clipwin-btn {
                     display: inline-flex; align-items: center; justify-content: center;
-                    height: 28px; padding: 0 12px; border-radius: 0;
+                    height: 24px; padding: 0 10px; border-radius: 0;
                     border: 2px solid #000; background: #fff; color: #000;
                     font-size: 12px; font-weight: 600;
                     cursor: pointer; transition: all 0.1s ease;
@@ -3882,7 +3887,7 @@ ${md}`, 'text');
             addStyleOnce('clipwin-body', `
                 .cnb-clipwin-body {
                     margin: 0;
-                    padding: 8px;
+                    padding: 5px;
                     background: #ffffff;
                     border: 2px solid #000;
                     border-radius: 0;
@@ -4522,7 +4527,7 @@ ${md}`, 'text');
                         appearance: none;
                         border: 2px solid #000;
                         border-radius: 0;
-                        padding: 4px 10px;
+                        padding: 2px 8px;
                         background: #fff;
                         color: #000;
                         cursor: pointer;
