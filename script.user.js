@@ -41,9 +41,49 @@
     let __CNB_CLIP_DIALOG = null;
     let __CNB_SETTINGS_DIALOG = null, __CNB_SETTINGS_OVERLAY = null;
     let __CNB_ISSUE_DIALOG = null, __CNB_ISSUE_OVERLAY = null;
+    let __CNB_CREATE_DIALOG = null, __CNB_CREATE_OVERLAY = null;
     let __CNB_MO = null;
     let __CNB_UNLOAD_BOUND = false;
     let __CNB_DOCK_SHOW_TIMER = null;
+
+    // 筛选标签按钮样式（创建弹窗与 Issue 列表共用，胶囊风格）
+    const CNB_FILTER_BTN_CSS = `
+        .cnb-issue-dialog .cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }
+        .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 6px !important;
+            margin: 0 !important;
+            padding: 4px 10px !important;
+            border: 1px solid #d0d7de !important;
+            border-radius: 9999px !important;
+            background: #fff !important;
+            color: #24292f !important;
+            font-size: 13px !important;
+            line-height: 1.2 !important;
+            white-space: nowrap !important;
+            vertical-align: middle !important;
+            box-shadow: 0 1px 0 rgba(27,31,36,0.04) !important;
+            transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
+            cursor: pointer !important;
+            user-select: none !important;
+        }
+        .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn:hover {
+            background: #f6f8fa !important;
+            border-color: #afb8c1 !important;
+            box-shadow: 0 1px 0 rgba(27,31,36,0.06) !important;
+        }
+        .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.active {
+            background: #0366d6 !important;
+            border-color: #0256b9 !important;
+            color: #fff !important;
+            box-shadow: 0 1px 0 rgba(27,31,36,0.05) !important;
+        }
+        .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.pressed {
+            transform: translateY(1px) scale(0.98) !important;
+            box-shadow: 0 1px 0 rgba(27,31,36,0.08) !important;
+        }
+    `;
 
     // 配置信息
     const CONFIG = {
@@ -61,30 +101,6 @@
 
     // 添加自定义样式 - 扁平黑白配色
     GM_addStyle(`
-        .cnb-issue-floating-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 10000;
-            background: #000;
-            color: #fff;
-            border: 2px solid #000;
-            border-radius: 0;
-            width: 50px;
-            height: 50px;
-            cursor: pointer;
-            box-shadow: none;
-            font-size: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s ease;
-        }
-        .cnb-issue-floating-btn:hover {
-            background: #fff;
-            color: #000;
-            transform: none;
-        }
         .cnb-issue-dialog {
             position: fixed !important;
             top: 50% !important;
@@ -94,7 +110,7 @@
             border: 2px solid #000 !important;
             border-radius: 0 !important;
             padding: 16px !important;
-            z-index: 10001 !important;
+            z-index: 2147483641 !important;
             box-shadow: 4px 4px 0 #000 !important;
             min-width: 500px !important;
             max-width: 90vw !important;
@@ -196,7 +212,7 @@
             width: 100%;
             height: 100%;
             background: rgba(0,0,0,0.7);
-            z-index: 10000;
+            z-index: 2147483640;
         }
         .cnb-issue-loading {
             display: inline-block;
@@ -231,7 +247,7 @@
             padding: 5px 20px;
             border-radius: 0;
             border: 2px solid #000;
-            z-index: 10002;
+            z-index: 2147483643;
             font-size: 14px;
             font-weight: 500;
             box-shadow: 3px 3px 0 rgba(0,0,0,0.5);
@@ -277,7 +293,7 @@
             border-left: none !important;
             border-radius: 0 !important;
             box-shadow: 3px 3px 0 #000 !important;
-            z-index: 10002 !important;
+            z-index: 2147483642 !important;
             transition: left .15s ease, opacity .15s ease !important;
             opacity: 0.9;
             /* 隐藏态：完全不可见、不拦截鼠标事件，避免误触发或被站点样式挤到页面中间 */
@@ -316,31 +332,6 @@
         }
         .cnb-dock .cnb-dock-btn:active {
             transform: translate(1px, 1px);
-        }
-    `);
-
-    // 追加设置按钮样式 - 扁平黑白配色
-    GM_addStyle(`
-        .cnb-issue-settings-btn {
-            position: fixed;
-            z-index: 10000;
-            background: #000;
-            color: #fff;
-            border: 2px solid #000;
-            border-radius: 0;
-            width: 44px;
-            height: 44px;
-            cursor: pointer;
-            box-shadow: 2px 2px 0 rgba(0,0,0,0.5);
-            font-size: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.1s ease;
-        }
-        .cnb-issue-settings-btn:hover {
-            background: #fff;
-            color: #000;
         }
     `);
 
@@ -1255,6 +1246,14 @@
     function showIssueDialog(selected) {
         stopAreaSelection(); // 先退出选择模式
 
+        // 单例：若已有创建弹窗（含微博截图弹窗），先关闭，避免重复打开
+        try {
+            if (__CNB_CREATE_OVERLAY && __CNB_CREATE_OVERLAY.parentNode) __CNB_CREATE_OVERLAY.remove();
+            if (__CNB_CREATE_DIALOG && __CNB_CREATE_DIALOG.parentNode) __CNB_CREATE_DIALOG.remove();
+        } catch (_) {}
+        __CNB_CREATE_OVERLAY = null;
+        __CNB_CREATE_DIALOG = null;
+
         // 获取选择的内容并转换为Markdown（支持多选）
         const elements = Array.isArray(selected) ? selected : (selected ? [selected] : []);
         const pageTitle = document.title.replace(/\s+-\s+.+$/, '').replace(/\s+/g, ' ');
@@ -1277,43 +1276,12 @@
         const dialog = document.createElement('div');
         dialog.className = 'cnb-issue-dialog';
 
+        // 记录单例，供下次打开前清理
+        __CNB_CREATE_OVERLAY = overlay;
+        __CNB_CREATE_DIALOG = dialog;
+
         // 强化筛选标签按钮样式（避免被站点样式覆盖，统一为胶囊风格）
-        GM_addStyle(`
-            .cnb-issue-dialog .cnb-issue-filter { display:flex !important; flex-wrap:wrap !important; gap:5px !important; }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn {
-                display: inline-flex !important;
-                align-items: center !important;
-                gap: 6px !important;
-                padding: 4px 10px !important;
-                border: 1px solid #d0d7de !important;
-                border-radius: 9999px !important;
-                background: #fff !important;
-                color: #24292f !important;
-                font-size: 13px !important;
-                line-height: 1.2 !important;
-                white-space: nowrap !important;
-                vertical-align: middle !important;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.04) !important;
-                transition: background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease !important;
-                cursor: pointer !important;
-                user-select: none !important;
-            }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn:hover {
-                background: #f6f8fa !important;
-                border-color: #afb8c1 !important;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.06) !important;
-            }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.active {
-                background: #0366d6 !important;
-                border-color: #0256b9 !important;
-                color: #fff !important;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.05) !important;
-            }
-            .cnb-issue-dialog .cnb-issue-filter .cnb-issue-filter-btn.pressed {
-                transform: translateY(1px) scale(0.98) !important;
-                box-shadow: 0 1px 0 rgba(27,31,36,0.08) !important;
-            }
-        `);
+        addStyleOnce('issue-filter-btn', CNB_FILTER_BTN_CSS);
 
         // 获取选择的内容并转换为Markdown（支持多选）
         const parts = elements.map(el => (getSelectedContentAsMarkdown(el) || '').trim()).filter(Boolean);
@@ -1718,6 +1686,8 @@ ${escapeHtml(selectedContent)}</textarea>
         const closeDialog = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
             if (document.body.contains(dialog)) document.body.removeChild(dialog);
+            if (__CNB_CREATE_OVERLAY === overlay) __CNB_CREATE_OVERLAY = null;
+            if (__CNB_CREATE_DIALOG === dialog) __CNB_CREATE_DIALOG = null;
         };
 
         overlay.addEventListener('click', closeDialog);
@@ -2170,6 +2140,10 @@ ${escapeHtml(selectedContent)}</textarea>
         const dialog = document.createElement('div');
         dialog.className = 'cnb-issue-dialog';
 
+        // 记录单例，供下次打开前清理
+        __CNB_CREATE_OVERLAY = overlay;
+        __CNB_CREATE_DIALOG = dialog;
+
         dialog.innerHTML = `
             <h3>创建 CNB Issue (微博截图)</h3>
             <div>
@@ -2454,6 +2428,8 @@ ${escapeHtml(selectedContent)}</textarea>
         const closeDialog = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
             if (document.body.contains(dialog)) document.body.removeChild(dialog);
+            if (__CNB_CREATE_OVERLAY === overlay) __CNB_CREATE_OVERLAY = null;
+            if (__CNB_CREATE_DIALOG === dialog) __CNB_CREATE_DIALOG = null;
         };
 
         overlay.addEventListener('click', closeDialog);
@@ -3445,22 +3421,14 @@ ${escapeHtml(selectedContent)}</textarea>
         dialog.style.width = '840px';
         dialog.style.maxWidth = '840px';
 
-        // 补充：筛选按钮按压态样式 - 扁平黑白配色
-        GM_addStyle(`
-            .cnb-issue-filter-btn.pressed {
-                transform: translate(1px, 1px);
-                box-shadow: none;
-            }
-            .cnb-issue-filter-btn {
-                transition: all 0.1s ease;
-            }
-        `);
+        // 筛选按钮样式（与创建弹窗共用，防重复注入）
+        addStyleOnce('issue-filter-btn', CNB_FILTER_BTN_CSS);
 
         const listEl = dialog.querySelector('#cnb-issue-list');
         const closeBtn = dialog.querySelector('.cnb-dialog-close');
 
         // 行内标签（Issue 列表中的 labels）胶囊样式 - 扁平黑白配色
-        GM_addStyle(`
+        addStyleOnce('issue-chip', `
             .cnb-issue-chip {
                 display: inline-flex;
                 align-items: center;
@@ -3716,8 +3684,6 @@ ${md}`, 'text');
             const allBtn = document.createElement('button');
             allBtn.className = 'cnb-issue-filter-btn active';
             allBtn.textContent = '全部';
-            applyFilterButtonStyles(allBtn);
-            applyFilterButtonActive(allBtn);
             addPressEffect(allBtn);
             allBtn.addEventListener('click', () => {
                 setActive(allBtn);
@@ -3731,7 +3697,6 @@ ${md}`, 'text');
                 const b = document.createElement('button');
                 b.className = 'cnb-issue-filter-btn';
                 b.textContent = tag;
-                applyFilterButtonStyles(b);
                 addPressEffect(b);
                 b.addEventListener('click', () => {
                     setActive(b);
@@ -3743,49 +3708,8 @@ ${md}`, 'text');
 
             function setActive(btn) {
                 const buttons = filterEl.querySelectorAll('button');
-                buttons.forEach(x => {
-                    x.classList.remove('active');
-                    applyFilterButtonDefault(x);
-                });
+                buttons.forEach(x => x.classList.remove('active'));
                 btn.classList.add('active');
-                applyFilterButtonActive(btn);
-            }
-
-            // 行内样式（带 !important）确保胶囊风格不被站点覆盖
-            function applyFilterButtonStyles(btn) {
-                const s = btn.style;
-                s.setProperty('display', 'inline-flex', 'important');
-                s.setProperty('align-items', 'center', 'important');
-                s.setProperty('gap', '6px', 'important');
-                s.setProperty('padding', '4px 10px', 'important');
-                s.setProperty('border', '1px solid #d0d7de', 'important');
-                s.setProperty('border-radius', '9999px', 'important');
-                s.setProperty('background', '#fff', 'important');
-                s.setProperty('color', '#24292f', 'important');
-                s.setProperty('font-size', '13px', 'important');
-                s.setProperty('line-height', '1.2', 'important');
-                s.setProperty('white-space', 'nowrap', 'important');
-                s.setProperty('vertical-align', 'middle', 'important');
-                s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
-                s.setProperty('transition', 'background-color .15s ease, border-color .15s ease, box-shadow .15s ease, transform .02s ease', 'important');
-                s.setProperty('cursor', 'pointer', 'important');
-                s.setProperty('user-select', 'none', 'important');
-                // 关键：移除按钮自身外边距，确保由容器 gap 控制间距
-                s.setProperty('margin', '0', 'important');
-            }
-            function applyFilterButtonDefault(btn) {
-                const s = btn.style;
-                s.setProperty('background', '#fff', 'important');
-                s.setProperty('border-color', '#d0d7de', 'important');
-                s.setProperty('color', '#24292f', 'important');
-                s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.04)', 'important');
-            }
-            function applyFilterButtonActive(btn) {
-                const s = btn.style;
-                s.setProperty('background', '#0366d6', 'important');
-                s.setProperty('border-color', '#0256b9', 'important');
-                s.setProperty('color', '#fff', 'important');
-                s.setProperty('box-shadow', '0 1px 0 rgba(27,31,36,0.05)', 'important');
             }
 
             // 为筛选按钮添加按压反馈
@@ -3805,10 +3729,6 @@ ${md}`, 'text');
 
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
-
-        console.log('[CNB Issue] overlay added:', document.body.contains(overlay));
-        console.log('[CNB Issue] dialog added:', document.body.contains(dialog));
-        console.log('[CNB Issue] dialog.className:', dialog.className);
     }
 
     // 剪贴板弹窗（独立样式），展示 Issue #25
@@ -3834,7 +3754,7 @@ ${md}`, 'text');
                     border: 2px solid #000;
                     border-radius: 0;
                     box-shadow: 4px 4px 0 #000;
-                    z-index: 10010;
+                    z-index: 2147483644;
                     overflow: hidden;
                     font: 13px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Ubuntu,Cantarell,Noto Sans,Helvetica,Arial,"PingFang SC","Microsoft Yahei",sans-serif;
                     color: #000;
@@ -3871,6 +3791,7 @@ ${md}`, 'text');
                     left: 6px; top: 6px;
                     border: none; background: transparent;
                     color: #fff; line-height: 1; font-size: 11px; font-weight: 600;
+                    text-transform: uppercase;
                     pointer-events: auto;
                 }
                 .cnb-clipwin-title a {
@@ -3879,8 +3800,6 @@ ${md}`, 'text');
                 }
                 .cnb-clipwin-title a:hover {
                     text-decoration: underline;
-                }
-                    text-transform: uppercase;
                 }
                 .cnb-clipwin-close:hover, .cnb-clipwin-pin:hover { color: #ccc; }
                 /* 固定按钮图标样式 */
@@ -3902,7 +3821,7 @@ ${md}`, 'text');
                     position: fixed;
                     display: flex;
                     flex-direction: column;
-                    z-index: 10011;
+                    z-index: 2147483645;
                     opacity: 1;
                     pointer-events: auto;
                     transition: opacity 0.3s ease;
@@ -3938,20 +3857,6 @@ ${md}`, 'text');
                     height: 100%;
                     width: 1px;
                     background: #fff;
-                }
-                .cnb-clipwin-body {
-                    margin: 0;
-                    padding: 8px;
-                    background: #fff;
-                    border: 2px solid #000;
-                    border-radius: 0;
-                    white-space: pre-wrap;
-                    word-break: break-word;
-                    font-family: ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
-                    font-size: 11px;
-                    line-height: 1.4;
-                    max-height: 60vh;
-                    overflow: auto;
                 }
                 .cnb-clipwin-actions {
                     border-top: 2px solid #000;
@@ -4015,7 +3920,7 @@ ${md}`, 'text');
         } catch (_) {}
         /* 剪贴板窗口滚动条样式：扁平黑白（仅作用于剪贴板窗口） */
         try {
-            GM_addStyle(`
+            addStyleOnce('clipwin-scrollbar', `
                 /* Firefox */
                 .cnb-clipwin, .cnb-clipwin-content, .cnb-clipwin-body, .cnb-clipwin-body pre {
                     scrollbar-width: thin;
@@ -4606,7 +4511,7 @@ ${md}`, 'text');
                 // 在正文之前插入 tabs 容器（注入样式 - 扁平黑白配色）
                 try {
                   if (typeof GM_addStyle === 'function') {
-                    GM_addStyle(`
+                    addStyleOnce('clipwin-inline-tabs', `
                       .cnb-clipwin-tabs-inline {
                         display: flex;
                         flex-wrap: wrap;
