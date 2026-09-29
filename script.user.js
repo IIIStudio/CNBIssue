@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.19
+// @version      1.5.23
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -14,6 +14,7 @@
 // @grant        GM_setValue
 // @connect      api.cnb.cool
 // @connect      cnb.cool
+// @connect      *
 // @connect      weibo.com
 // @connect      *.weibo.com
 // @connect      sinaimg.cn
@@ -50,7 +51,8 @@
         repoPath: '',
         accessToken: '',
         issueEndpoint: '/-/issues',
-        uploadEnabled: true
+        uploadEnabled: true,
+        uploadFilesEnabled: true
     };
     let SAVED_TAGS = [];
     // 选择模式快捷键（可在设置中修改），规范格式如：Shift+E
@@ -718,6 +720,23 @@
             });
         },
 
+        // 将相对 URL 解析为绝对 URL（基于原页面地址），避免相对链接在 CNB Issue 中
+        // 被错误地解析为 CNB 仓库路径（如 /uploads/xxx.zip -> cnb.cool/<repo>/-/git/raw/HEAD/...）
+        resolveUrl: function(url) {
+            if (!url) return '';
+            const value = String(url).trim();
+            if (!value) return value;
+            // 纯锚点保持原样（避免解析成当前页面的绝对地址）
+            if (value.startsWith('#')) return value;
+            // 已带协议（http:, https:, mailto:, javascript:, data:, blob: 等）直接返回
+            if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value)) return value;
+            try {
+                return new URL(value, document.baseURI || location.href).href;
+            } catch (_) {
+                return value;
+            }
+        },
+
         // 处理节点
         processNode: function(node) {
             if (node.nodeType === Node.TEXT_NODE) {
@@ -767,7 +786,7 @@
                     const raw = node.textContent || '';
                     return `\`\`\`${language}\n${raw}\n\`\`\`\n\n`;
                 case 'a':
-                    const href = node.getAttribute('href') || '';
+                    const href = this.resolveUrl(node.getAttribute('href'));
                     // 提取可见文本（去掉空白）
                     const visibleText = (childrenContent || '').replace(/\s+/g, '');
                     // 规则：
@@ -784,11 +803,11 @@
                 case 'img':
                     const alt = node.getAttribute('alt') || '';
                     // 优先获取父元素 <a> 标签的原始图片 URL（不受类名限制）
-                    let src = node.getAttribute('src') || '';
+                    let src = this.resolveUrl(node.getAttribute('src'));
                     const parentHref = (() => {
                         const parent = node.parentElement;
                         if (parent && parent.tagName === 'A') {
-                            const href = parent.getAttribute('href') || '';
+                            const href = this.resolveUrl(parent.getAttribute('href'));
                             // 检查 href 是否指向图片
                             if (/\.(webp|jpe?g|png|gif|svg|bmp|ico)(\?.*)?$/i.test(href)) {
                                 return href;
@@ -1326,6 +1345,9 @@
             }
         });
 
+        // 检测选中内容中的附件链接（如 zip/pdf 等）
+        const detectedFiles = extractFileLinksFromMarkdown(selectedContent);
+
         dialog.innerHTML = `
             <h3>创建 CNB Issue (Markdown格式)</h3>
             <div>
@@ -1345,6 +1367,21 @@ ${escapeHtml(selectedContent)}</textarea>
                     </label>
                     <div class="cnb-hint" id="cnb-image-upload-status">检测到 ${uniqueImages.length} 张图片，点击创建时将自动上传</div>
                 </div>` : ''}
+                <div style="margin-top: 10px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        <button type="button" class="cnb-tag-btn" id="cnb-attach-pick">添加附件</button>
+                        <input type="file" id="cnb-attach-input" multiple style="display: none;">
+                        <span class="cnb-hint">可添加本地文件（如 zip），创建 Issue / 评论时自动上传并插入链接</span>
+                    </div>
+                    <div id="cnb-attach-list" style="margin-top: 4px;"></div>
+                    ${detectedFiles.length > 0 ? `<div class="cnb-image-upload-toggle" style="margin-top: 8px;">
+                        <label class="cnb-toggle-switch">
+                            <input type="checkbox" id="cnb-file-upload-toggle" ${CONFIG.uploadFilesEnabled ? 'checked' : ''}>
+                            <span class="cnb-toggle-slider"></span>
+                        </label>
+                        <div class="cnb-hint" id="cnb-file-upload-status">检测到 ${detectedFiles.length} 个附件链接，点击创建时将自动上传</div>
+                    </div>` : ''}
+                </div>
                 <div style="display: flex; align-items: center; gap: 20px; margin-top: 10px;">
                     <div class="cnb-image-upload-toggle" style="margin: 0;">
                         <label class="cnb-toggle-switch">
@@ -1562,6 +1599,55 @@ ${escapeHtml(selectedContent)}</textarea>
             });
         }
 
+        // ===== 附件（文件）上传 =====
+        const attachPickBtn = dialog.querySelector('#cnb-attach-pick');
+        const attachInput = dialog.querySelector('#cnb-attach-input');
+        const attachListEl = dialog.querySelector('#cnb-attach-list');
+        const attachFileToggle = dialog.querySelector('#cnb-file-upload-toggle');
+        let localAttachments = [];
+
+        if (attachFileToggle) {
+            attachFileToggle.addEventListener('change', () => {
+                CONFIG.uploadFilesEnabled = !!attachFileToggle.checked;
+                if (typeof GM_setValue === 'function') {
+                    GM_setValue('cnbUploadFilesEnabled', CONFIG.uploadFilesEnabled);
+                }
+            });
+        }
+
+        const renderAttachList = () => {
+            if (!attachListEl) return;
+            attachListEl.innerHTML = '';
+            localAttachments.forEach((f, idx) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;align-items:center;gap:8px;font-size:12px;margin:2px 0;';
+                const nameSpan = document.createElement('span');
+                nameSpan.textContent = `${f.name} (${formatFileSize(f.blob.size)})`;
+                const rmBtn = document.createElement('button');
+                rmBtn.type = 'button';
+                rmBtn.className = 'cnb-tag-btn';
+                rmBtn.textContent = '移除';
+                rmBtn.addEventListener('click', () => {
+                    localAttachments.splice(idx, 1);
+                    renderAttachList();
+                });
+                row.appendChild(nameSpan);
+                row.appendChild(rmBtn);
+                attachListEl.appendChild(row);
+            });
+        };
+
+        if (attachPickBtn && attachInput) {
+            attachPickBtn.addEventListener('click', () => attachInput.click());
+            attachInput.addEventListener('change', () => {
+                Array.from(attachInput.files || []).forEach(file => {
+                    localAttachments.push({ name: file.name, blob: file });
+                });
+                attachInput.value = '';
+                renderAttachList();
+            });
+        }
+
         // 监听编辑开关变化，显示/隐藏Issue号输入框
         if (editToggle && issueNumberInput) {
             editToggle.addEventListener('change', () => {
@@ -1637,6 +1723,66 @@ ${escapeHtml(selectedContent)}</textarea>
         overlay.addEventListener('click', closeDialog);
         cancelBtn.addEventListener('click', closeDialog);
 
+        // 统一的图片/附件上传流程：先上传图片，再上传附件（检测到的链接 + 本地文件）
+        const processUploads = (content, shouldUploadImages, shouldUploadFiles, finalCallback) => {
+            const afterImages = (cb) => {
+                const imagesInContent = extractImagesFromMarkdown(content);
+                if (shouldUploadImages && imagesInContent.length > 0) {
+                    const statusEl = dialog.querySelector('#cnb-image-upload-status');
+                    if (statusEl) statusEl.textContent = '正在上传图片...';
+                    uploadImagesAndReplace(content, imagesInContent, (updatedContent, errors) => {
+                        if (errors && errors.length > 0) {
+                            const failedCount = errors.filter(e => e.error).length;
+                            const successCount = errors.length - failedCount;
+                            if (statusEl) statusEl.textContent = `图片上传完成：成功 ${successCount} 张，失败 ${failedCount} 张`;
+                            if (failedCount > 0) console.warn('部分图片上传失败:', errors.filter(e => e.error));
+                        } else if (statusEl) {
+                            statusEl.textContent = '图片上传完成';
+                        }
+                        cb(updatedContent);
+                    });
+                } else {
+                    cb(content);
+                }
+            };
+
+            afterImages((afterImageContent) => {
+                const detectedFiles = shouldUploadFiles ? extractFileLinksFromMarkdown(afterImageContent) : [];
+                const entries = detectedFiles
+                    .map(f => ({ name: f.name, href: f.url }))
+                    .concat(localAttachments.map(f => ({ name: f.name, blob: f.blob })));
+
+                if (entries.length === 0) {
+                    finalCallback(afterImageContent);
+                    return;
+                }
+
+                const statusEl = dialog.querySelector('#cnb-file-upload-status');
+                if (statusEl) statusEl.textContent = '正在上传附件...';
+                uploadFilesAndReplace(afterImageContent, entries, (updatedContent, errors) => {
+                    const failedCount = (errors || []).filter(e => e.error).length;
+                    const successCount = (errors || []).length - failedCount;
+                    if (statusEl) {
+                        statusEl.textContent = failedCount > 0
+                            ? `附件上传完成：成功 ${successCount} 个，失败 ${failedCount} 个`
+                            : '附件上传完成';
+                    }
+                    if (failedCount > 0) {
+                        const failedList = (errors || []).filter(e => e.error);
+                        console.error('部分附件上传失败:', failedList);
+                        if (typeof GM_notification === 'function') {
+                            GM_notification({
+                                text: '附件上传失败：' + (failedList[0]?.error || '未知错误'),
+                                title: 'CNB Issue工具',
+                                timeout: 8000
+                            });
+                        }
+                    }
+                    finalCallback(updatedContent);
+                });
+            });
+        };
+
         confirmBtn.addEventListener('click', () => {
             const title = dialog.querySelector('#cnb-issue-title').value;
             const content = dialog.querySelector('#cnb-issue-content').value;
@@ -1670,10 +1816,10 @@ ${escapeHtml(selectedContent)}</textarea>
             confirmBtn.disabled = true;
             confirmBtn.innerHTML = '<div class="cnb-issue-loading"></div>' + (shouldComment ? '添加评论中...' : (shouldEdit ? '修改中...' : '创建中...'));
 
-            // 从编辑后的内容中重新检测图片
-            const imagesInContent = extractImagesFromMarkdown(content);
+            const fileUploadToggle = dialog.querySelector('#cnb-file-upload-toggle');
+            const shouldUploadFiles = fileUploadToggle ? fileUploadToggle.checked : true;
 
-            // 处理图片上传和Issue操作的逻辑
+            // 处理图片/附件上传和Issue操作的逻辑
             const handleContentReady = (updatedContent) => {
                 if (shouldComment) {
                     // 只添加评论，不修改Issue
@@ -1704,31 +1850,8 @@ ${escapeHtml(selectedContent)}</textarea>
                 }
             };
 
-            // 如果开启了上传且有图片，先上传图片
-            if (shouldUpload && imagesInContent.length > 0) {
-                const statusEl = dialog.querySelector('#cnb-image-upload-status');
-                if (statusEl) statusEl.textContent = '正在上传图片...';
-
-                uploadImagesAndReplace(content, imagesInContent, (updatedContent, errors) => {
-                    if (errors && errors.length > 0) {
-                        const failedCount = errors.filter(e => e.error).length;
-                        const successCount = errors.length - failedCount;
-                        if (statusEl) {
-                            statusEl.textContent = `图片上传完成：成功 ${successCount} 张，失败 ${failedCount} 张`;
-                        }
-                        if (failedCount > 0) {
-                            console.warn('部分图片上传失败:', errors.filter(e => e.error));
-                        }
-                    } else if (statusEl) {
-                        statusEl.textContent = '图片上传完成';
-                    }
-
-                    handleContentReady(updatedContent);
-                });
-            } else {
-                // 不上传图片或没有图片，直接处理Issue操作
-                handleContentReady(content);
-            }
+            // 处理图片与附件上传，然后创建/修改/评论
+            processUploads(content, shouldUpload, shouldUploadFiles, handleContentReady);
         });
 
         if (doneBtn) {
@@ -1837,33 +1960,11 @@ ${escapeHtml(selectedContent)}</textarea>
                     }
                 };
 
-                // 从编辑后的内容中重新检测图片
-                const imagesInContent = extractImagesFromMarkdown(content);
+                const fileUploadToggle = dialog.querySelector('#cnb-file-upload-toggle');
+                const shouldUploadFiles = fileUploadToggle ? fileUploadToggle.checked : true;
 
-                // 如果开启了上传且有图片，先上传图片
-                if (shouldUpload && imagesInContent.length > 0) {
-                    const statusEl = dialog.querySelector('#cnb-image-upload-status');
-                    if (statusEl) statusEl.textContent = '正在上传图片...';
-
-                    uploadImagesAndReplace(content, imagesInContent, (updatedContent, errors) => {
-                        if (errors && errors.length > 0) {
-                            const failedCount = errors.filter(e => e.error).length;
-                            const successCount = errors.length - failedCount;
-                            if (statusEl) {
-                                statusEl.textContent = `图片上传完成：成功 ${successCount} 张，失败 ${failedCount} 张`;
-                            }
-                            if (failedCount > 0) {
-                                console.warn('部分图片上传失败:', errors.filter(e => e.error));
-                            }
-                        } else if (statusEl) {
-                            statusEl.textContent = '图片上传完成';
-                        }
-
-                        handleContentReady(updatedContent);
-                    });
-                } else {
-                    handleContentReady(content);
-                }
+                // 处理图片与附件上传，然后创建/修改/评论
+                processUploads(content, shouldUpload, shouldUploadFiles, handleContentReady);
             });
         }
 
@@ -5402,6 +5503,7 @@ ${md}`, 'text');
         GM_xmlhttpRequest({
             method: 'GET',
             url: imageUrl,
+            headers: { 'Referer': location.href },
             responseType: 'blob',
             onload: function(response) {
                 if (response.status >= 200 && response.status < 300) {
@@ -5419,6 +5521,46 @@ ${md}`, 'text');
                 if (callback) callback(null, '获取图片失败');
             }
         });
+    }
+
+    // 3.1 下载远程文件（附件）数据：同源优先用 fetch 携带 Cookie/Referer，失败再回退 GM_xmlhttpRequest
+    function fetchRemoteFileData(fileUrl, callback) {
+        if (!fileUrl) {
+            if (callback) callback(null, '无效的文件地址');
+            return;
+        }
+        if (fileUrl.startsWith('data:')) {
+            fetchImageData(fileUrl, callback);
+            return;
+        }
+
+        let sameOrigin = false;
+        try {
+            sameOrigin = new URL(fileUrl, location.href).origin === location.origin;
+        } catch (_) {}
+
+        if (sameOrigin && typeof fetch === 'function') {
+            fetch(fileUrl, { credentials: 'include' })
+                .then(res => {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.blob();
+                })
+                .then(blob => {
+                    if (blob && blob.size > 0) {
+                        if (callback) callback(blob, null);
+                    } else {
+                        console.warn('[CNB Issue] 同源 fetch 下载为空，回退 GM_xmlhttpRequest:', fileUrl);
+                        fetchImageData(fileUrl, callback);
+                    }
+                })
+                .catch((e) => {
+                    console.warn('[CNB Issue] 同源 fetch 下载失败，回退 GM_xmlhttpRequest:', fileUrl, e && e.message);
+                    fetchImageData(fileUrl, callback);
+                });
+            return;
+        }
+
+        fetchImageData(fileUrl, callback);
     }
 
     // 4. 从Markdown内容中提取图片链接
@@ -5515,6 +5657,251 @@ ${md}`, 'text');
         });
     }
 
+    // 判断链接是否指向可下载的附件文件
+    function isDownloadableFileUrl(url) {
+        if (!url) return false;
+        const clean = String(url).split('#')[0].split('?')[0].toLowerCase();
+        return /\.(zip|rar|7z|tar|gz|tgz|bz2|xz|pdf|doc|docx|xls|xlsx|ppt|pptx|csv|txt|md|json|xml|apk|exe|msi|dmg|iso|mp3|mp4|mov|avi|mkv|wav|flac|log|torrent)$/.test(clean);
+    }
+
+    // 从 Markdown 中提取附件链接（[名称](url)，排除图片 ![]()）
+    function extractFileLinksFromMarkdown(markdown) {
+        const files = [];
+        if (!markdown) return files;
+        const seen = new Set();
+        const regex = /(!?)\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+        let match;
+        while ((match = regex.exec(markdown)) !== null) {
+            if (match[1] === '!') continue; // 图片链接，跳过
+            const url = match[3];
+            if (!isDownloadableFileUrl(url)) continue;
+            if (seen.has(url)) continue;
+            seen.add(url);
+            let name = (match[2] || '').trim();
+            if (!name) {
+                try {
+                    name = decodeURIComponent(url.split('?')[0].split('/').pop() || '');
+                } catch (_) {
+                    name = url;
+                }
+            }
+            files.push({ url, name });
+        }
+        return files;
+    }
+
+    // 格式化文件大小
+    function formatFileSize(bytes) {
+        if (bytes === null || bytes === undefined) return '';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / 1024 / 1024).toFixed(2) + ' MB';
+    }
+
+    // 从上传凭证响应中解析最终附件链接
+    function buildFileAssetUrl(uploadInfo) {
+        if (!uploadInfo) return null;
+        const direct = uploadInfo.asset_link || uploadInfo.assets?.link || uploadInfo.assets?.url || uploadInfo.link;
+        if (direct && /^https?:\/\//.test(direct)) return direct;
+        const p = uploadInfo.assets?.path || uploadInfo.path;
+        if (p) {
+            if (/^https?:\/\//.test(p)) return p;
+            return p.includes(CONFIG.repoPath) ? `https://cnb.cool${p}` : `https://cnb.cool/${CONFIG.repoPath}${p}`;
+        }
+        return null;
+    }
+
+    // 6. 获取文件（附件）上传凭证
+    function requestFileUploadToken(fileName, fileSize, callback) {
+        if (!CONFIG.repoPath || !CONFIG.accessToken) {
+            if (typeof callback === 'function') callback(null, '请先配置仓库路径和访问令牌');
+            return;
+        }
+
+        const uploadUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}/-/upload/files`;
+
+        GM_xmlhttpRequest({
+            method: 'POST',
+            url: uploadUrl,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': CONFIG.accessToken,
+                'Accept': 'application/json'
+            },
+            data: JSON.stringify({ name: fileName, size: fileSize }),
+            responseType: 'json',
+            onload: function(response) {
+                if (response.status >= 200 && response.status < 300) {
+                    const resp = response.response || JSON.parse(response.responseText || '{}');
+                    console.log('[CNB Issue] 附件上传凭证响应:', resp);
+                    if (callback) callback(resp, null);
+                    return;
+                }
+
+                let errorMsg = `HTTP ${response.status}`;
+                let detail = '';
+                try {
+                    detail = response.responseText || (typeof response.response === 'string' ? response.response : JSON.stringify(response.response || {}));
+                } catch (_) {}
+                const err = typeof response.response === 'string'
+                    ? JSON.parse(response.response || '{}') : response.response;
+                if (err?.message) errorMsg = err.message;
+                if (detail) errorMsg = `${errorMsg}（${String(detail).slice(0, 300)}）`;
+                console.error('[CNB Issue] 附件上传凭证失败: HTTP', response.status, detail);
+
+                // 特殊处理权限错误 (errcode: 7)
+                if (err?.errcode === 7 && err?.errmsg?.includes('票据授权范围')) {
+                    errorMsg = '访问令牌缺少 repo-notes:rw 权限';
+                    if (typeof GM_notification === 'function') {
+                        GM_notification({
+                            text: '附件上传失败：访问令牌缺少 repo-notes:rw 权限',
+                            title: 'CNB Issue工具',
+                            timeout: 5000
+                        });
+                    }
+                }
+
+                if (callback) callback(null, errorMsg);
+            },
+            onerror: function() {
+                if (callback) callback(null, '网络请求失败');
+            }
+        });
+    }
+
+    // 7. 上传文件到 OSS（使用 GM_xmlhttpRequest 绕过 CORS）
+    function uploadFileToOss(uploadInfo, fileData, callback) {
+        if (!uploadInfo?.upload_url) {
+            if (callback) callback(null, '上传凭证无效');
+            return;
+        }
+
+        const headers = {
+            'Content-Type': (fileData && fileData.type) || 'application/octet-stream'
+        };
+        if (uploadInfo.form) {
+            Object.entries(uploadInfo.form).forEach(([key, value]) => {
+                if (key.toLowerCase() !== 'file') {
+                    headers[key] = value;
+                }
+            });
+        }
+
+        GM_xmlhttpRequest({
+            method: 'PUT',
+            url: uploadInfo.upload_url,
+            headers: headers,
+            data: fileData,
+            binary: (fileData instanceof Blob),
+            onload: function(response) {
+                if (response.status >= 200 && response.status < 300) {
+                    const finalUrl = buildFileAssetUrl(uploadInfo);
+                    console.log('[CNB Issue] 附件 PUT 上传成功，凭证字段:', Object.keys(uploadInfo || {}), '解析链接:', finalUrl);
+                    if (callback) callback(finalUrl, finalUrl ? null : '上传成功但未获取到文件链接（凭证响应：' + JSON.stringify(uploadInfo).slice(0, 300) + '）');
+                    return;
+                }
+
+                let errorMsg = `HTTP ${response.status}`;
+                try {
+                    if (response.responseText) {
+                        const err = JSON.parse(response.responseText);
+                        if (err?.message) errorMsg = err.message;
+                    }
+                } catch (_) {}
+                if (response.responseText) errorMsg = `${errorMsg}（${String(response.responseText).slice(0, 300)}）`;
+                console.error('[CNB Issue] 附件 PUT 上传失败: HTTP', response.status, response.responseText);
+
+                if (callback) callback(null, errorMsg);
+            },
+            onerror: function() {
+                if (callback) callback(null, '文件上传失败');
+            }
+        });
+    }
+
+    // 8. 批量上传附件并替换/追加 Markdown 中的链接
+    //   files: [{ name, href }] 远程链接 或 [{ name, blob }] 本地文件
+    function uploadFilesAndReplace(markdown, files, callback) {
+        if (!files || files.length === 0) {
+            if (callback) callback(markdown, []);
+            return;
+        }
+
+        const errors = [];
+        const results = new Array(files.length);
+        let remaining = files.length;
+
+        const done = () => {
+            remaining--;
+            if (remaining > 0) return;
+
+            let updated = markdown;
+            const appended = [];
+            files.forEach((f, i) => {
+                const r = results[i];
+                if (!r || !r.newUrl) return;
+                if (r.isLocal) {
+                    appended.push(`[${r.name}](${r.newUrl})`);
+                } else if (f.href) {
+                    updated = updated.split(`](${f.href})`).join(`](${r.newUrl})`);
+                }
+            });
+            if (appended.length > 0) {
+                updated = updated.replace(/\s+$/, '') + '\n\n' + appended.join('\n') + '\n';
+            }
+            errors.forEach(e => console.error('[CNB Issue] 附件处理失败:', e.src, '->', e.error));
+            if (callback) callback(updated, errors);
+        };
+
+        const handleBlob = (index, f, blob) => {
+            const isLocal = !!f.blob;
+            const fileName = f.name || 'file';
+            if (!blob) {
+                errors.push({ src: f.href || fileName, error: '获取文件失败' });
+                results[index] = { name: fileName, isLocal, newUrl: null };
+                done();
+                return;
+            }
+            requestFileUploadToken(fileName, blob.size, (uploadInfo, tokenError) => {
+                if (tokenError || !uploadInfo) {
+                    errors.push({ src: f.href || fileName, error: tokenError || '获取上传凭证失败' });
+                    results[index] = { name: fileName, isLocal, newUrl: null };
+                    done();
+                    return;
+                }
+                uploadFileToOss(uploadInfo, blob, (newUrl, uploadError) => {
+                    if (uploadError || !newUrl) {
+                        errors.push({ src: f.href || fileName, error: uploadError || '上传文件失败' });
+                        results[index] = { name: fileName, isLocal, newUrl: null };
+                    } else {
+                        results[index] = { name: fileName, isLocal, newUrl };
+                    }
+                    done();
+                });
+            });
+        };
+
+        files.forEach((f, index) => {
+            if (f.blob) {
+                handleBlob(index, f, f.blob);
+            } else if (f.href) {
+                fetchRemoteFileData(f.href, (blob, error) => {
+                    if (error || !blob) {
+                        errors.push({ src: f.href, error: error || '获取文件失败' });
+                        results[index] = { name: f.name || f.href, isLocal: false, newUrl: null };
+                        done();
+                        return;
+                    }
+                    handleBlob(index, f, blob);
+                });
+            } else {
+                errors.push({ src: f.name || '', error: '无效的附件' });
+                results[index] = { name: f.name || '', isLocal: false, newUrl: null };
+                done();
+            }
+        });
+    }
+
     // 清理资源
     function cleanup() {
         try { if (__CNB_MO) { __CNB_MO.disconnect(); __CNB_MO = null; } } catch (_) {}
@@ -5532,6 +5919,7 @@ ${md}`, 'text');
             const hk = GM_getValue('cnbHotkey', START_HOTKEY);
             const hkEnabled = GM_getValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
             const uploadEnabled = GM_getValue('cnbUploadEnabled', true);
+            const uploadFilesEnabled = GM_getValue('cnbUploadFilesEnabled', true);
 
             if (repo) CONFIG.repoPath = repo;
             if (token) CONFIG.accessToken = token;
@@ -5539,6 +5927,7 @@ ${md}`, 'text');
             if (hk) START_HOTKEY = normalizeHotkeyString(hk);
             HOTKEY_ENABLED = !!hkEnabled;
             CONFIG.uploadEnabled = !!uploadEnabled;
+            CONFIG.uploadFilesEnabled = !!uploadFilesEnabled;
         } catch (_) {}
     }
 
