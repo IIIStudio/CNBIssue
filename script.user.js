@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.5.23
+// @version      1.6.1
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -3225,27 +3225,15 @@ ${escapeHtml(selectedContent)}</textarea>
 
                     // 如果配置了仓库路径和访问令牌，则调用 API 删除标签
                     if (repo && token) {
-                        const deleteLabelUrl = `${CONFIG.apiBase}/${repo}/-/labels/${encodeURIComponent(tag)}`;
-
                         try {
                             await new Promise((resolve, reject) => {
-                                GM_xmlhttpRequest({
+                                apiRequest({
                                     method: 'DELETE',
-                                    url: deleteLabelUrl,
-                                    headers: {
-                                        'Accept': 'application/vnd.cnb.api+json',
-                                        'Authorization': token
-                                    },
-                                    onload: function(response) {
-                                        if (response.status >= 200 && response.status < 300) {
-                                            resolve();
-                                        } else {
-                                            reject(new Error(`HTTP ${response.status}`));
-                                        }
-                                    },
-                                    onerror: function() {
-                                        reject(new Error('网络错误'));
-                                    }
+                                    repo: repo,
+                                    token: token,
+                                    path: `/-/labels/${encodeURIComponent(tag)}`
+                                }, function(err) {
+                                    if (err) reject(err); else resolve();
                                 });
                             });
                         } catch (error) {
@@ -3282,36 +3270,16 @@ ${escapeHtml(selectedContent)}</textarea>
             }
 
             // 创建仓库标签
-            const createLabelUrl = `${CONFIG.apiBase}/${repo}/-/labels`;
-
             try {
                 await new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
+                    apiRequest({
                         method: 'POST',
-                        url: createLabelUrl,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/vnd.cnb.api+json',
-                            'Authorization': token
-                        },
-                        data: JSON.stringify({ name: t }),
-                        responseType: 'json',
-                        onload: function(response) {
-                            if (response.status >= 200 && response.status < 300) {
-                                resolve();
-                            } else {
-                                let errorMsg = `HTTP ${response.status}`;
-                                try {
-                                    const err = typeof response.response === 'string'
-                                        ? JSON.parse(response.response) : response.response;
-                                    if (err?.message) errorMsg = err.message;
-                                } catch (e) {}
-                                reject(new Error(errorMsg));
-                            }
-                        },
-                        onerror: function() {
-                            reject(new Error('网络错误'));
-                        }
+                        repo: repo,
+                        token: token,
+                        path: '/-/labels',
+                        data: { name: t }
+                    }, function(err) {
+                        if (err) reject(err); else resolve();
                     });
                 });
 
@@ -3347,46 +3315,23 @@ ${escapeHtml(selectedContent)}</textarea>
 
             async function fetchLabelsPage() {
                 return new Promise((resolve, reject) => {
-                    const labelsUrl = `${CONFIG.apiBase}/${repo}/-/labels?page=${page}&page_size=${pageSize}`;
-                    GM_xmlhttpRequest({
+                    apiRequest({
                         method: 'GET',
-                        url: labelsUrl,
-                        headers: {
-                            'Accept': 'application/vnd.cnb.api+json',
-                            'Authorization': token
-                        },
-                        responseType: 'json',
-                        onload: function(response) {
-                            if (response.status === 200) {
-                                let data = null;
-                                try {
-                                    data = typeof response.response === 'object' && response.response !== null
-                                        ? response.response
-                                        : JSON.parse(response.responseText || '{}');
-                                } catch (e) {
-                                    data = null;
-                                }
-
-                                const labels = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-                                allLabels = allLabels.concat(labels);
-
-                                // 检查是否还有更多数据
-                                const total = data?.total_count ?? data?.total ?? data?.totalCount ?? 0;
-                                hasMore = labels.length === pageSize && allLabels.length < total;
-                                resolve(labels);
-                            } else {
-                                let errorMsg = `HTTP ${response.status}`;
-                                try {
-                                    const err = typeof response.response === 'string'
-                                        ? JSON.parse(response.response) : response.response;
-                                    if (err?.message) errorMsg = err.message;
-                                } catch (e) {}
-                                reject(new Error(errorMsg));
-                            }
-                        },
-                        onerror: function() {
-                            reject(new Error('网络错误'));
+                        repo: repo,
+                        token: token,
+                        path: `/-/labels?page=${page}&page_size=${pageSize}`
+                    }, function(err, data) {
+                        if (err) {
+                            reject(err);
+                            return;
                         }
+                        const labels = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+                        allLabels = allLabels.concat(labels);
+
+                        // 检查是否还有更多数据
+                        const total = data?.total_count ?? data?.total ?? data?.totalCount ?? 0;
+                        hasMore = labels.length === pageSize && allLabels.length < total;
+                        resolve(labels);
                     });
                 });
             }
@@ -3570,44 +3515,30 @@ ${escapeHtml(selectedContent)}</textarea>
         function loadIssues(page) {
             listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载中...</div>`;
 
-            const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}?page=${page}&page_size=${pageSize}&state=closed`;
-            GM_xmlhttpRequest({
+            apiRequest({
                 method: 'GET',
-                url: url.replace(/&/g, '&'),
-                headers: {
-                    'accept': 'application/json',
-                    'Authorization': `${CONFIG.accessToken}`
-                },
-                responseType: 'json',
-                onload: function(res) {
-                    try {
-                        const data = typeof res.response === 'object' && res.response !== null
-                            ? res.response
-                            : JSON.parse(res.responseText || '[]');
-                        const items = Array.isArray(data) ? data : (Array.isArray(data.items) ? data.items : []);
-
-                        if (!items.length) {
-                            listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">暂无数据</div>`;
-                            return;
-                        }
-
-                        allItems = Array.isArray(items) ? items : [];
-
-                        // 根据返回的数量判断是否有下一页
-                        // 如果返回的数量等于 pageSize，说明可能还有下一页
-                        // 否则就是最后一页
-                        const hasMore = items.length === pageSize;
-
-                        currentPage = page;
-                        renderList(currentFilterLabel);
-                        renderPagination(hasMore);
-                    } catch (e) {
-                        listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载失败</div>`;
-                    }
-                },
-                onerror: function() {
-                    listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">网络请求失败</div>`;
+                path: `${CONFIG.issueEndpoint}?page=${page}&page_size=${pageSize}&state=closed`,
+                accept: 'application/json'
+            }, function(err, data) {
+                if (err) {
+                    listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载失败</div>`;
+                    return;
                 }
+                const items = Array.isArray(data) ? data : (Array.isArray(data && data.items) ? data.items : []);
+
+                if (!items.length) {
+                    listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">暂无数据</div>`;
+                    return;
+                }
+
+                allItems = items;
+
+                // 返回数量等于 pageSize 说明可能还有下一页
+                const hasMore = items.length === pageSize;
+
+                currentPage = page;
+                renderList(currentFilterLabel);
+                renderPagination(hasMore);
             });
         }
 
@@ -3671,51 +3602,27 @@ ${escapeHtml(selectedContent)}</textarea>
                     btnCopy.disabled = true;
                     const oldText = btnCopy.textContent;
                     btnCopy.textContent = '…';
-                    const urlPatch = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${number}`;
-                    GM_xmlhttpRequest({
+                    apiRequest({
                         method: 'PATCH',
-                        url: urlPatch,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `${CONFIG.accessToken}`,
-                            'Accept': 'application/json'
-                        },
-                        data: JSON.stringify({ state: 'closed', state_reason: 'completed' }),
-                        responseType: 'json',
-                        onload: function(res) {
-                            try {
-                                if (res.status >= 200 && res.status < 300) {
-                                    let obj = null;
-                                    try {
-                                        obj = (typeof res.response === 'object' && res.response !== null)
-                                            ? res.response
-                                            : JSON.parse(res.responseText || '{}');
-                                    } catch(_) {}
-                                    const t = (obj && obj.title) ? obj.title : title;
-                                    const b = (obj && typeof obj.body === 'string') ? obj.body : '';
-                                    const md = cleanMarkdownContent(String(b || ''));
-                                    if (typeof GM_setClipboard === 'function') {
-                                        GM_setClipboard(`${t}
+                        path: `${CONFIG.issueEndpoint}/${number}`,
+                        accept: 'application/json',
+                        data: { state: 'closed', state_reason: 'completed' }
+                    }, function(err, obj) {
+                        try {
+                            if (err) {
+                                notifyUser(`操作失败: ${err.message}`, 5000);
+                                return;
+                            }
+                            const t = (obj && obj.title) ? obj.title : title;
+                            const b = (obj && typeof obj.body === 'string') ? obj.body : '';
+                            const md = cleanMarkdownContent(String(b || ''));
+                            if (typeof GM_setClipboard === 'function') {
+                                GM_setClipboard(`${t}
 
 ${md}`, 'text');
-                                    }
-                                    if (typeof GM_notification === 'function') {
-                                        GM_notification({ text: '已关闭并复制到剪贴板', title: 'CNB Issue工具', timeout: 3000 });
-                                    }
-                                } else {
-                                    if (typeof GM_notification === 'function') {
-                                        GM_notification({ text: '操作失败: HTTP ' + res.status, title: 'CNB Issue工具', timeout: 5000 });
-                                    }
-                                }
-                            } finally {
-                                btnCopy.disabled = false;
-                                btnCopy.textContent = oldText;
                             }
-                        },
-                        onerror: function() {
-                            if (typeof GM_notification === 'function') {
-                                GM_notification({ text: '网络请求失败', title: 'CNB Issue工具', timeout: 5000 });
-                            }
+                            notifyUser('已关闭并复制到剪贴板');
+                        } finally {
                             btnCopy.disabled = false;
                             btnCopy.textContent = oldText;
                         }
@@ -4444,7 +4351,6 @@ ${md}`, 'text');
 
         // 函数：加载指定 Issue 的内容
         function loadIssue(issueNum, index) {
-            const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${encodeURIComponent(issueNum)}`;
             bodyEl.textContent = '加载中…';
 
             // 如果已缓存，直接使用
@@ -4453,37 +4359,18 @@ ${md}`, 'text');
                 return;
             }
 
-            GM_xmlhttpRequest({
+            apiRequest({
                 method: 'GET',
-                url,
-                headers: {
-                    'Accept': 'application/json',
-                    'Authorization': `${CONFIG.accessToken}`
-                },
-                responseType: 'json',
-                onload: function(res) {
-                    try {
-                        if (res.status >= 200 && res.status < 300) {
-                            let data = null;
-                            try {
-                                data = (typeof res.response === 'object' && res.response !== null)
-                                    ? res.response
-                                    : JSON.parse(res.responseText || '{}');
-                            } catch (_) {}
-
-                            // 缓存数据
-                            issueDataCache[index] = data;
-                            renderIssueContent(data, issueNum);
-                        } else {
-                            bodyEl.textContent = `加载失败 (HTTP ${res.status})`;
-                        }
-                    } catch (e) {
-                        bodyEl.textContent = '加载出错';
-                    }
-                },
-                onerror: function() {
-                    bodyEl.textContent = '网络错误';
+                path: `${CONFIG.issueEndpoint}/${encodeURIComponent(issueNum)}`,
+                accept: 'application/json'
+            }, function(err, data) {
+                if (err) {
+                    bodyEl.textContent = `加载失败 (${err.message})`;
+                    return;
                 }
+                // 缓存数据
+                issueDataCache[index] = data;
+                renderIssueContent(data, issueNum);
             });
         }
 
@@ -4886,16 +4773,122 @@ ${md}`, 'text');
         showClipboard();
     }
 
+    // ===================== 统一 API 请求层 =====================
+    // 统一处理：URL 拼接、鉴权头、JSON 解析、错误信息提取、失败通知
+    function notifyUser(text, timeout) {
+        if (typeof GM_notification === 'function') {
+            GM_notification({ text: text, title: 'CNB Issue工具', timeout: timeout || 3000 });
+        }
+    }
+
+    // 解析响应体（json / blob / text）
+    function parseApiResponse(response, responseType) {
+        if (responseType === 'blob' || responseType === 'arraybuffer') return response.response;
+        if (response.response && typeof response.response === 'object') return response.response;
+        try {
+            return JSON.parse(response.responseText || '{}');
+        } catch (_) {
+            return response.response !== undefined ? response.response : (response.responseText || null);
+        }
+    }
+
+    // 从响应/错误体中提取可读错误信息
+    function apiErrorMessage(parsed, response) {
+        const msg = `HTTP ${response.status}`;
+        let body = (parsed === undefined || parsed === null || parsed === '') ? response.responseText : parsed;
+        if (typeof body === 'string') {
+            try {
+                const j = JSON.parse(body);
+                if (j && j.message) return j.message;
+            } catch (_) {}
+            if (body && body.length < 300 && body[0] !== '{' && body[0] !== '<') return `${msg}: ${body}`;
+            return msg;
+        }
+        if (body && typeof body === 'object' && body.message) return body.message;
+        return msg;
+    }
+
+    /**
+     * 统一请求。
+     * @param {Object} options
+     *   - method {string}       默认 GET
+     *   - path {string}         相对仓库的路径，如 '/-/issues/1'（与 url 二选一）
+     *   - url {string}          绝对 URL（与 path 二选一）
+     *   - repo {string}         覆盖默认仓库（默认 CONFIG.repoPath）
+     *   - token {string}        覆盖默认令牌（默认 CONFIG.accessToken）
+     *   - accept {string}       Accept 头，默认 application/vnd.cnb.api+json
+     *   - data {any}            请求体，非 rawBody 时自动 JSON.stringify
+     *   - rawBody {boolean}     data 是否已序列化
+     *   - headers {Object}      额外请求头
+     *   - responseType {string} 默认 json
+     *   - binary {boolean}      二进制上传
+     *   - notifyError {string}  失败时自动通知的前缀
+     *   - notifyTimeout {number}
+     * @param {(err, data, response) => void} callback
+     */
+    function apiRequest(options, callback) {
+        const opt = options || {};
+        const cb = (typeof callback === 'function') ? callback : null;
+        const method = (opt.method || 'GET').toUpperCase();
+        const accept = opt.accept || 'application/vnd.cnb.api+json';
+        const token = opt.token !== undefined ? opt.token : CONFIG.accessToken;
+        const repo = opt.repo !== undefined ? opt.repo : CONFIG.repoPath;
+
+        let url = opt.url;
+        if (!url) {
+            const base = `${CONFIG.apiBase}/${repo}`;
+            const p = opt.path || '';
+            url = p ? `${base}${p.charAt(0) === '/' ? p : '/' + p}` : base;
+        }
+
+        const headers = Object.assign({
+            'Accept': accept,
+            'Authorization': token
+        }, opt.headers || {});
+
+        const responseType = opt.responseType || 'json';
+        const hasBody = opt.data !== undefined && opt.data !== null;
+        if (hasBody && !opt.rawBody) {
+            headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+        }
+
+        const request = {
+            method,
+            url,
+            headers,
+            responseType,
+            onload: function(response) {
+                const parsed = parseApiResponse(response, responseType);
+                if (response.status >= 200 && response.status < 300) {
+                    if (cb) cb(null, parsed, response);
+                } else {
+                    const msg = apiErrorMessage(parsed, response);
+                    if (opt.notifyError) notifyUser(opt.notifyError + msg, opt.notifyTimeout || 5000);
+                    if (cb) cb(new Error(msg), parsed, response);
+                }
+            },
+            onerror: function() {
+                const msg = '网络请求失败';
+                if (opt.notifyError) notifyUser(opt.notifyError + msg, opt.notifyTimeout || 5000);
+                if (cb) cb(new Error(msg), null, null);
+            }
+        };
+        if (hasBody) request.data = opt.rawBody ? opt.data : JSON.stringify(opt.data);
+        if (opt.binary) request.binary = true;
+        if (opt.timeout) request.timeout = opt.timeout;
+
+        GM_xmlhttpRequest(request);
+    }
+
     // 创建Issue
     function createIssue(title, content, labels = [], callback) {
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
-            if (typeof GM_notification === 'function') {
-                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
-            }
+            notifyUser('请先在设置中配置仓库路径与访问令牌');
             if (typeof openSettingsDialog === 'function') openSettingsDialog();
             if (typeof callback === 'function') callback(false);
             return;
         }
+
         const issueData = {
             repoId: CONFIG.repoPath,
             title: title,
@@ -4904,111 +4897,43 @@ ${md}`, 'text');
             assignees: []
         };
 
-        const apiUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}`;
-
-
-
-        GM_xmlhttpRequest({
+        apiRequest({
             method: 'POST',
-            url: apiUrl,
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `${CONFIG.accessToken}`,
-                'Accept': 'application/json'
-            },
-            data: JSON.stringify(issueData),
-            responseType: 'json',
-            onload: function(response) {
-                if (response.status === 200 || response.status === 201) {
-                    // 解析返回，取 issueId（兼容不同字段）
-                    let respObj = null;
-                    try {
-                        respObj = typeof response.response === 'object' && response.response !== null
-                          ? response.response
-                          : JSON.parse(response.responseText || '{}');
-                    } catch (_) {
-                        respObj = null;
-                    }
-                    const issueId = respObj?.id ?? respObj?.number ?? respObj?.iid ?? respObj?.issue_id;
+            path: CONFIG.issueEndpoint,
+            accept: 'application/json',
+            data: issueData
+        }, function(err, respObj) {
+            if (err) {
+                notifyUser(`创建失败: ${err.message}`, 5000);
+                if (typeof callback === 'function') callback(false);
+                return;
+            }
 
-                    const notifySuccess = () => {
-                        GM_notification({
-                            text: `Issue创建成功！`,
-                            title: 'CNB Issue工具',
-                            timeout: 3000
-                        });
+            // 解析返回，取 issueId（兼容不同字段）
+            const issueId = respObj?.id ?? respObj?.number ?? respObj?.iid ?? respObj?.issue_id;
+            const notifySuccess = () => {
+                notifyUser('Issue创建成功！');
+                if (callback) callback(true, issueId);
+            };
+
+            // 若有标签，则单独 PUT 标签
+            if (Array.isArray(labels) && labels.length > 0 && issueId != null) {
+                apiRequest({
+                    method: 'PUT',
+                    path: `${CONFIG.issueEndpoint}/${issueId}/labels`,
+                    accept: 'application/json',
+                    data: { labels }
+                }, function(labelErr) {
+                    if (labelErr) {
+                        notifyUser(`Issue已创建，但设置标签失败：${labelErr.message}`, 5000);
                         if (callback) callback(true, issueId);
-                    };
-
-                    // 若有标签，则单独 PUT 标签
-                    if (Array.isArray(labels) && labels.length > 0 && issueId != null) {
-                        const labelsUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueId}/labels`;
-                        GM_xmlhttpRequest({
-                            method: 'PUT',
-                            url: labelsUrl,
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `${CONFIG.accessToken}`,
-                                'Accept': 'application/json'
-                            },
-                            data: JSON.stringify({ labels }),
-                            responseType: 'json',
-                            onload: function(res2) {
-                                if (res2.status >= 200 && res2.status < 300) {
-                                    notifySuccess();
-                                } else {
-                                    let msg = `HTTP ${res2.status}`;
-                                    try {
-                                        const err = typeof res2.response === 'string'
-                                          ? JSON.parse(res2.response) : res2.response;
-                                        if (err?.message) msg = err.message;
-                                    } catch (_) {}
-                                    GM_notification({
-                                        text: `Issue已创建，但设置标签失败：${msg}`,
-                                        title: 'CNB Issue工具',
-                                        timeout: 5000
-                                    });
-                                    if (callback) callback(true, issueId);
-                                }
-                            },
-                            onerror: function() {
-                                GM_notification({
-                                    text: `Issue已创建，但设置标签时网络错误`,
-                                    title: 'CNB Issue工具',
-                                    timeout: 5000
-                                });
-                                if (callback) callback(true, issueId);
-                            }
-                        });
                     } else {
-                        // 无标签或无法解析 issueId，直接成功
                         notifySuccess();
                     }
-                } else {
-                    let errorMsg = `HTTP ${response.status}`;
-                    try {
-                        const errorData = typeof response.response === 'string' ?
-                            JSON.parse(response.response) : response.response;
-                        if (errorData && errorData.message) {
-                            errorMsg = errorData.message;
-                        }
-                    } catch (e) {}
-
-                    GM_notification({
-                        text: `创建失败: ${errorMsg}`,
-                        title: 'CNB Issue工具',
-                        timeout: 5000
-                    });
-                    if (callback) callback(false);
-                }
-            },
-            onerror: function(error) {
-                GM_notification({
-                    text: `网络请求失败`,
-                    title: 'CNB Issue工具',
-                    timeout: 5000
                 });
-                if (callback) callback(false);
+            } else {
+                // 无标签或无法解析 issueId，直接成功
+                notifySuccess();
             }
         });
     }
@@ -5019,64 +4944,34 @@ ${md}`, 'text');
             if (typeof callback === 'function') callback(false);
             return;
         }
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueId}`;
-        GM_xmlhttpRequest({
+        apiRequest({
             method: 'PATCH',
-            url,
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `${CONFIG.accessToken}`,
-                'Accept': 'application/json'
-            },
-            data: JSON.stringify({
-                state: 'closed',
-                state_reason: stateReason
-            }),
-            responseType: 'json',
-            onload: function(res) {
-                if (res.status >= 200 && res.status < 300) {
-                    if (typeof callback === 'function') callback(true);
-                } else {
-                    let msg = `HTTP ${res.status}`;
-                    try {
-                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
-                        if (err?.message) msg = err.message;
-                    } catch (_) {}
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: `标记完成失败：${msg}`,
-                            title: 'CNB Issue工具',
-                            timeout: 5000
-                        });
-                    }
-                    if (typeof callback === 'function') callback(false);
-                }
-            },
-            onerror: function() {
-                if (typeof GM_notification === 'function') {
-                    GM_notification({
-                        text: `网络请求失败（关闭Issue）`,
-                        title: 'CNB Issue工具',
-                        timeout: 5000
-                    });
-                }
-                if (typeof callback === 'function') callback(false);
-            }
+            path: `${CONFIG.issueEndpoint}/${issueId}`,
+            accept: 'application/json',
+            notifyError: '标记完成失败：',
+            data: { state: 'closed', state_reason: stateReason }
+        }, function(err) {
+            if (typeof callback === 'function') callback(!err);
         });
     }
 
     // 更新Issue
     function updateIssue(issueNumber, data, labels = [], callback) {
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
-            if (typeof GM_notification === 'function') {
-                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
-            }
+            notifyUser('请先在设置中配置仓库路径与访问令牌');
             if (typeof callback === 'function') callback(false);
             return;
         }
 
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}`;
-        const labelsUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}/labels`;
+        const labelsPath = `${CONFIG.issueEndpoint}/${issueNumber}/labels`;
+
+        // 比较两个标签数组是否相同
+        const labelsEqual = (arr1, arr2) => {
+            if (arr1.length !== arr2.length) return false;
+            const sorted1 = [...arr1].sort();
+            const sorted2 = [...arr2].sort();
+            return sorted1.every((val, index) => val === sorted2[index]);
+        };
 
         // 处理标签的函数
         const handleLabels = (afterUpdateCallback) => {
@@ -5087,181 +4982,52 @@ ${md}`, 'text');
             }
 
             // 先获取当前Issue的标签
-            const getCurrentLabels = () => {
-                return new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
-                        method: 'GET',
-                        url: `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}`,
-                        headers: {
-                            'Authorization': `${CONFIG.accessToken}`,
-                            'Accept': 'application/vnd.cnb.api+json'
-                        },
-                        responseType: 'json',
-                        onload: function(res) {
-                            if (res.status >= 200 && res.status < 300) {
-                                const issueData = res.response || {};
-                                const currentLabels = issueData.labels || [];
-                                resolve(currentLabels.map(l => l.name || l));
-                            } else {
-                                resolve([]);
-                            }
-                        },
-                        onerror: function() {
-                            resolve([]);
-                        }
-                    });
-                });
-            };
+            apiRequest({
+                method: 'GET',
+                path: `${CONFIG.issueEndpoint}/${issueNumber}`
+            }, function(err, issueData) {
+                const currentLabels = (!err && issueData && issueData.labels) || [];
+                const currentNames = currentLabels.map(l => l.name || l);
 
-            // 比较两个标签数组是否相同
-            const labelsEqual = (arr1, arr2) => {
-                if (arr1.length !== arr2.length) return false;
-                const sorted1 = [...arr1].sort();
-                const sorted2 = [...arr2].sort();
-                return sorted1.every((val, index) => val === sorted2[index]);
-            };
+                // 标签相同则不做任何操作
+                if (!err && labelsEqual(currentNames, labels)) {
+                    afterUpdateCallback(true);
+                    return;
+                }
 
-            // 删除所有标签（如果有）
-            const deleteLabels = () => {
-                return new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
-                        method: 'DELETE',
-                        url: labelsUrl,
-                        headers: {
-                            'Authorization': `${CONFIG.accessToken}`,
-                            'Accept': 'application/vnd.cnb.api+json'
-                        },
-                        responseType: 'json',
-                        onload: function(res) {
-                            resolve();
-                        },
-                        onerror: function() {
-                            resolve();
-                        }
-                    });
-                });
-            };
-
-            // 添加新标签
-            const addLabels = () => {
-                return new Promise((resolve, reject) => {
-                    GM_xmlhttpRequest({
+                // 标签有变化（或获取失败）：先删除再添加
+                apiRequest({ method: 'DELETE', path: labelsPath }, function() {
+                    apiRequest({
                         method: 'PUT',
-                        url: labelsUrl,
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `${CONFIG.accessToken}`,
-                            'Accept': 'application/vnd.cnb.api+json'
-                        },
-                        data: JSON.stringify({ labels }),
-                        responseType: 'json',
-                        onload: function(res) {
-                            if (res.status >= 200 && res.status < 300) {
-                                resolve();
-                            } else {
-                                reject(`HTTP ${res.status}`);
-                            }
-                        },
-                        onerror: function() {
-                            reject('网络错误');
+                        path: labelsPath,
+                        data: { labels }
+                    }, function(labelErr) {
+                        if (labelErr) {
+                            notifyUser(`更新标签失败：${labelErr.message}`, 5000);
                         }
+                        // 标签更新失败，但Issue已更新，仍然返回成功
+                        afterUpdateCallback(true);
                     });
                 });
-            };
-
-            // 获取当前标签，比较后决定是否需要更新
-            getCurrentLabels()
-                .then(currentLabels => {
-                    // 如果标签相同，直接返回，不做任何操作
-                    if (labelsEqual(currentLabels, labels)) {
-                        afterUpdateCallback(true);
-                        return;
-                    }
-
-                    // 标签有变化，执行删除和添加
-                    deleteLabels()
-                        .then(() => addLabels())
-                        .then(() => afterUpdateCallback(true))
-                        .catch((err) => {
-                            if (typeof GM_notification === 'function') {
-                                GM_notification({
-                                    text: `更新标签失败：${err}`,
-                                    title: 'CNB Issue工具',
-                                    timeout: 5000
-                                });
-                            }
-                            // 标签更新失败，但Issue已更新，仍然返回成功
-                            afterUpdateCallback(true);
-                        });
-                })
-                .catch(() => {
-                    // 获取当前标签失败，仍然执行更新
-                    deleteLabels()
-                        .then(() => addLabels())
-                        .then(() => afterUpdateCallback(true))
-                        .catch((err) => {
-                            if (typeof GM_notification === 'function') {
-                                GM_notification({
-                                    text: `更新标签失败：${err}`,
-                                    title: 'CNB Issue工具',
-                                    timeout: 5000
-                                });
-                            }
-                            afterUpdateCallback(true);
-                        });
-                });
+            });
         };
 
         // 先更新Issue的title和body
-        GM_xmlhttpRequest({
+        apiRequest({
             method: 'PATCH',
-            url,
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `${CONFIG.accessToken}`,
-                'Accept': 'application/vnd.cnb.api+json'
-            },
-            data: JSON.stringify(data),
-            responseType: 'json',
-            onload: function(res) {
-                if (res.status >= 200 && res.status < 300) {
-                    // Issue更新成功，处理标签
-                    handleLabels((labelSuccess) => {
-                        if (typeof GM_notification === 'function') {
-                            GM_notification({
-                                text: `Issue #${issueNumber} 更新成功！`,
-                                title: 'CNB Issue工具',
-                                timeout: 3000
-                            });
-                        }
-                        if (typeof callback === 'function') callback(true);
-                    });
-                } else {
-                    let msg = `HTTP ${res.status}`;
-                    try {
-                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
-                        if (err?.message) msg = err.message;
-                    } catch (_) {}
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: `更新失败：${msg}`,
-                            title: 'CNB Issue工具',
-                            timeout: 5000
-                        });
-                    }
-                    if (typeof callback === 'function') callback(false);
-                }
-            },
-            onerror: function() {
-                if (typeof GM_notification === 'function') {
-                    GM_notification({
-                        text: `网络请求失败（更新Issue）`,
-                        title: 'CNB Issue工具',
-                        timeout: 5000
-                    });
-                }
+            path: `${CONFIG.issueEndpoint}/${issueNumber}`,
+            data: data
+        }, function(err) {
+            if (err) {
+                notifyUser(`更新失败：${err.message}`, 5000);
                 if (typeof callback === 'function') callback(false);
+                return;
             }
+            // Issue更新成功，处理标签
+            handleLabels(() => {
+                notifyUser(`Issue #${issueNumber} 更新成功！`);
+                if (typeof callback === 'function') callback(true);
+            });
         });
     }
 
@@ -5272,168 +5038,108 @@ ${md}`, 'text');
             return;
         }
 
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}/labels`;
-        GM_xmlhttpRequest({
+        apiRequest({
             method: 'GET',
-            url,
-            headers: {
-                'Authorization': `${CONFIG.accessToken}`,
-                'Accept': 'application/vnd.cnb.api+json'
-            },
-            responseType: 'json',
-            onload: function(res) {
-                if (res.status >= 200 && res.status < 300) {
-                    let labels = [];
-                    try {
-                        const data = typeof res.response === 'object' && res.response !== null
-                            ? res.response
-                            : JSON.parse(res.responseText || '{}');
-                        // CNB API 返回的标签可能是数组
-                        labels = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
-                    } catch (e) {
-                        console.error('解析标签数据失败:', e);
-                    }
-                    if (typeof callback === 'function') callback(labels, null);
-                } else {
-                    let msg = `HTTP ${res.status}`;
-                    try {
-                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
-                        if (err?.message) msg = err.message;
-                    } catch (_) {}
-                    if (typeof callback === 'function') callback([], msg);
-                }
-            },
-            onerror: function() {
-                if (typeof callback === 'function') callback([], '网络错误');
+            path: `${CONFIG.issueEndpoint}/${issueNumber}/labels`
+        }, function(err, data) {
+            if (err) {
+                if (typeof callback === 'function') callback([], err.message);
+                return;
             }
+            let labels = [];
+            try {
+                // CNB API 返回的标签可能是数组
+                labels = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : []);
+            } catch (e) {
+                console.error('解析标签数据失败:', e);
+            }
+            if (typeof callback === 'function') callback(labels, null);
         });
     }
 
     // 添加评论到Issue
     function addCommentToIssue(issueNumber, body, callback) {
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
-            if (typeof GM_notification === 'function') {
-                GM_notification({ text: '请先在设置中配置仓库路径与访问令牌', title: 'CNB Issue工具', timeout: 3000 });
-            }
+            notifyUser('请先在设置中配置仓库路径与访问令牌');
             if (typeof callback === 'function') callback(false);
             return;
         }
 
-        const url = `${CONFIG.apiBase}/${CONFIG.repoPath}${CONFIG.issueEndpoint}/${issueNumber}/comments`;
-        GM_xmlhttpRequest({
+        apiRequest({
             method: 'POST',
-            url,
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `${CONFIG.accessToken}`,
-                'Accept': 'application/vnd.cnb.api+json'
-            },
-            data: JSON.stringify({ body }),
-            responseType: 'json',
-            onload: function(res) {
-                if (res.status >= 200 && res.status < 300) {
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: `评论添加成功！`,
-                            title: 'CNB Issue工具',
-                            timeout: 3000
-                        });
-                    }
-                    if (typeof callback === 'function') callback(true);
-                } else {
-                    let msg = `HTTP ${res.status}`;
-                    try {
-                        const err = typeof res.response === 'string' ? JSON.parse(res.response) : res.response;
-                        if (err?.message) msg = err.message;
-                    } catch (_) {}
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: `添加评论失败：${msg}`,
-                            title: 'CNB Issue工具',
-                            timeout: 5000
-                        });
-                    }
-                    if (typeof callback === 'function') callback(false);
-                }
-            },
-            onerror: function() {
-                if (typeof GM_notification === 'function') {
-                    GM_notification({
-                        text: `网络请求失败（添加评论）`,
-                        title: 'CNB Issue工具',
-                        timeout: 5000
-                    });
-                }
+            path: `${CONFIG.issueEndpoint}/${issueNumber}/comments`,
+            data: { body }
+        }, function(err) {
+            if (err) {
+                notifyUser(`添加评论失败：${err.message}`, 5000);
                 if (typeof callback === 'function') callback(false);
+            } else {
+                notifyUser('评论添加成功！');
+                if (typeof callback === 'function') callback(true);
             }
         });
     }
 
-    // 1. 获取上传凭证
-    function requestUploadToken(fileName, fileSize, callback) {
+    // ===== 上传层（图片 / 附件共用） =====
+    // 上传凭证接口与所需权限
+    const ASSET_UPLOAD_KINDS = {
+        imgs: { path: '/-/upload/imgs', permission: 'repo-code:rw', label: '图片' },
+        files: { path: '/-/upload/files', permission: 'repo-notes:rw', label: '附件' }
+    };
+
+    // 1. 获取上传凭证（kind: 'imgs' | 'files'）
+    function requestAssetUploadToken(kind, fileName, fileSize, callback) {
+        const conf = ASSET_UPLOAD_KINDS[kind] || ASSET_UPLOAD_KINDS.imgs;
         if (!CONFIG.repoPath || !CONFIG.accessToken) {
             if (typeof callback === 'function') callback(null, '请先配置仓库路径和访问令牌');
             return;
         }
 
-        const uploadUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}/-/upload/imgs`;
+        const body = (kind === 'files')
+            ? { name: fileName, size: fileSize }
+            : { name: fileName, size: fileSize, ext: {} };
 
-        GM_xmlhttpRequest({
+        apiRequest({
             method: 'POST',
-            url: uploadUrl,
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': CONFIG.accessToken,
-                'Accept': 'application/json'
-            },
-            data: JSON.stringify({ name: fileName, size: fileSize, ext: {} }),
-            responseType: 'json',
-            onload: function(response) {
-                if (response.status >= 200 && response.status < 300) {
-                    const resp = response.response || JSON.parse(response.responseText || '{}');
-                    if (callback) callback(resp, null);
-                    return;
-                }
-
-                let errorMsg = `HTTP ${response.status}`;
-                const err = typeof response.response === 'string'
-                    ? JSON.parse(response.response || '{}') : response.response;
-
-                if (err?.message) errorMsg = err.message;
-
+            path: conf.path,
+            accept: 'application/json',
+            data: body
+        }, function(err, resp, response) {
+            if (err) {
+                let errorMsg = err.message;
                 // 特殊处理权限错误 (errcode: 7)
-                if (err?.errcode === 7 && err?.errmsg?.includes('票据授权范围')) {
-                    errorMsg = '访问令牌缺少 repo-code:rw 权限';
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: '图片上传失败：访问令牌缺少 repo-code:rw 权限',
-                            title: 'CNB Issue工具',
-                            timeout: 5000
-                        });
-                    }
+                if (resp && resp.errcode === 7 && String(resp.errmsg || '').includes('票据授权范围')) {
+                    errorMsg = `访问令牌缺少 ${conf.permission} 权限`;
+                    notifyUser(`${conf.label}上传失败：访问令牌缺少 ${conf.permission} 权限`, 5000);
                 }
-
+                console.error(`[CNB Issue] ${conf.label}上传凭证失败:`, response ? response.status : '', resp || errorMsg);
                 if (callback) callback(null, errorMsg);
-            },
-            onerror: function() {
-                if (callback) callback(null, '网络请求失败');
+                return;
             }
+            console.log(`[CNB Issue] ${conf.label}上传凭证响应:`, resp);
+            if (callback) callback(resp, null);
         });
     }
 
-    // 2. 上传图片到 OSS（使用 GM_xmlhttpRequest 绕过 CORS）
-    function uploadImageToOss(uploadInfo, fileData, callback) {
+    // 兼容旧调用
+    function requestUploadToken(fileName, fileSize, callback) {
+        requestAssetUploadToken('imgs', fileName, fileSize, callback);
+    }
+    function requestFileUploadToken(fileName, fileSize, callback) {
+        requestAssetUploadToken('files', fileName, fileSize, callback);
+    }
+
+    // 2. 上传二进制到 OSS（label 仅用于日志/错误文案）
+    function uploadBlobToOss(uploadInfo, fileData, label, callback) {
         if (!uploadInfo?.upload_url) {
             if (callback) callback(null, '上传凭证无效');
             return;
         }
 
-        // 构建请求头
+        // 构建请求头，并附加凭证里的表单参数
         const headers = {
-            'Content-Type': fileData.type || 'application/octet-stream'
+            'Content-Type': (fileData && fileData.type) || 'application/octet-stream'
         };
-
-        // 添加额外的表单参数作为请求头
         if (uploadInfo.form) {
             Object.entries(uploadInfo.form).forEach(([key, value]) => {
                 if (key.toLowerCase() !== 'file') {
@@ -5450,28 +5156,38 @@ ${md}`, 'text');
             binary: (fileData instanceof Blob),
             onload: function(response) {
                 if (response.status >= 200 && response.status < 300) {
-                    const relativePath = uploadInfo.assets?.path || '';
-                    const fullUrl = relativePath.includes(CONFIG.repoPath)
-                        ? `https://cnb.cool${relativePath}`
-                        : `https://cnb.cool/${CONFIG.repoPath}${relativePath}`;
-                    if (callback) callback(fullUrl, null);
+                    const finalUrl = buildAssetUrl(uploadInfo);
+                    console.log(`[CNB Issue] ${label} PUT 上传成功，解析链接:`, finalUrl);
+                    if (callback) callback(finalUrl, finalUrl ? null : `上传成功但未获取到${label}链接（凭证响应：${JSON.stringify(uploadInfo).slice(0, 300)}）`);
                     return;
                 }
 
                 let errorMsg = `HTTP ${response.status}`;
+                let detail = '';
                 try {
-                    if (response.responseText) {
-                        const err = JSON.parse(response.responseText);
+                    detail = response.responseText || '';
+                    if (detail) {
+                        const err = JSON.parse(detail);
                         if (err?.message) errorMsg = err.message;
                     }
                 } catch (_) {}
+                if (detail) errorMsg = `${errorMsg}（${String(detail).slice(0, 300)}）`;
+                console.error(`[CNB Issue] ${label} PUT 上传失败:`, response.status, detail);
 
                 if (callback) callback(null, errorMsg);
             },
             onerror: function() {
-                if (callback) callback(null, '图片上传失败');
+                if (callback) callback(null, `${label}上传失败`);
             }
         });
+    }
+
+    // 兼容旧调用
+    function uploadImageToOss(uploadInfo, fileData, callback) {
+        uploadBlobToOss(uploadInfo, fileData, '图片', callback);
+    }
+    function uploadFileToOss(uploadInfo, fileData, callback) {
+        uploadBlobToOss(uploadInfo, fileData, '附件', callback);
     }
 
     // 3. 获取图片数据（从 URL 或 base64）
@@ -5698,8 +5414,8 @@ ${md}`, 'text');
         return (bytes / 1024 / 1024).toFixed(2) + ' MB';
     }
 
-    // 从上传凭证响应中解析最终附件链接
-    function buildFileAssetUrl(uploadInfo) {
+    // 从上传凭证响应中解析最终资源链接（图片 / 附件通用）
+    function buildAssetUrl(uploadInfo) {
         if (!uploadInfo) return null;
         const direct = uploadInfo.asset_link || uploadInfo.assets?.link || uploadInfo.assets?.url || uploadInfo.link;
         if (direct && /^https?:\/\//.test(direct)) return direct;
@@ -5709,114 +5425,6 @@ ${md}`, 'text');
             return p.includes(CONFIG.repoPath) ? `https://cnb.cool${p}` : `https://cnb.cool/${CONFIG.repoPath}${p}`;
         }
         return null;
-    }
-
-    // 6. 获取文件（附件）上传凭证
-    function requestFileUploadToken(fileName, fileSize, callback) {
-        if (!CONFIG.repoPath || !CONFIG.accessToken) {
-            if (typeof callback === 'function') callback(null, '请先配置仓库路径和访问令牌');
-            return;
-        }
-
-        const uploadUrl = `${CONFIG.apiBase}/${CONFIG.repoPath}/-/upload/files`;
-
-        GM_xmlhttpRequest({
-            method: 'POST',
-            url: uploadUrl,
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': CONFIG.accessToken,
-                'Accept': 'application/json'
-            },
-            data: JSON.stringify({ name: fileName, size: fileSize }),
-            responseType: 'json',
-            onload: function(response) {
-                if (response.status >= 200 && response.status < 300) {
-                    const resp = response.response || JSON.parse(response.responseText || '{}');
-                    console.log('[CNB Issue] 附件上传凭证响应:', resp);
-                    if (callback) callback(resp, null);
-                    return;
-                }
-
-                let errorMsg = `HTTP ${response.status}`;
-                let detail = '';
-                try {
-                    detail = response.responseText || (typeof response.response === 'string' ? response.response : JSON.stringify(response.response || {}));
-                } catch (_) {}
-                const err = typeof response.response === 'string'
-                    ? JSON.parse(response.response || '{}') : response.response;
-                if (err?.message) errorMsg = err.message;
-                if (detail) errorMsg = `${errorMsg}（${String(detail).slice(0, 300)}）`;
-                console.error('[CNB Issue] 附件上传凭证失败: HTTP', response.status, detail);
-
-                // 特殊处理权限错误 (errcode: 7)
-                if (err?.errcode === 7 && err?.errmsg?.includes('票据授权范围')) {
-                    errorMsg = '访问令牌缺少 repo-notes:rw 权限';
-                    if (typeof GM_notification === 'function') {
-                        GM_notification({
-                            text: '附件上传失败：访问令牌缺少 repo-notes:rw 权限',
-                            title: 'CNB Issue工具',
-                            timeout: 5000
-                        });
-                    }
-                }
-
-                if (callback) callback(null, errorMsg);
-            },
-            onerror: function() {
-                if (callback) callback(null, '网络请求失败');
-            }
-        });
-    }
-
-    // 7. 上传文件到 OSS（使用 GM_xmlhttpRequest 绕过 CORS）
-    function uploadFileToOss(uploadInfo, fileData, callback) {
-        if (!uploadInfo?.upload_url) {
-            if (callback) callback(null, '上传凭证无效');
-            return;
-        }
-
-        const headers = {
-            'Content-Type': (fileData && fileData.type) || 'application/octet-stream'
-        };
-        if (uploadInfo.form) {
-            Object.entries(uploadInfo.form).forEach(([key, value]) => {
-                if (key.toLowerCase() !== 'file') {
-                    headers[key] = value;
-                }
-            });
-        }
-
-        GM_xmlhttpRequest({
-            method: 'PUT',
-            url: uploadInfo.upload_url,
-            headers: headers,
-            data: fileData,
-            binary: (fileData instanceof Blob),
-            onload: function(response) {
-                if (response.status >= 200 && response.status < 300) {
-                    const finalUrl = buildFileAssetUrl(uploadInfo);
-                    console.log('[CNB Issue] 附件 PUT 上传成功，凭证字段:', Object.keys(uploadInfo || {}), '解析链接:', finalUrl);
-                    if (callback) callback(finalUrl, finalUrl ? null : '上传成功但未获取到文件链接（凭证响应：' + JSON.stringify(uploadInfo).slice(0, 300) + '）');
-                    return;
-                }
-
-                let errorMsg = `HTTP ${response.status}`;
-                try {
-                    if (response.responseText) {
-                        const err = JSON.parse(response.responseText);
-                        if (err?.message) errorMsg = err.message;
-                    }
-                } catch (_) {}
-                if (response.responseText) errorMsg = `${errorMsg}（${String(response.responseText).slice(0, 300)}）`;
-                console.error('[CNB Issue] 附件 PUT 上传失败: HTTP', response.status, response.responseText);
-
-                if (callback) callback(null, errorMsg);
-            },
-            onerror: function() {
-                if (callback) callback(null, '文件上传失败');
-            }
-        });
     }
 
     // 8. 批量上传附件并替换/追加 Markdown 中的链接
