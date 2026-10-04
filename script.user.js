@@ -406,6 +406,54 @@
         .cnb-dock .cnb-dock-btn:active {
             transform: translate(1px, 1px);
         }
+
+        /* 右下角结果提示（Toast）：显示后向右滑出消失 */
+        .cnb-toast {
+            position: fixed !important;
+            right: 16px !important;
+            bottom: 16px !important;
+            left: auto !important;
+            top: auto !important;
+            z-index: 2147483646 !important;
+            display: block !important;
+            visibility: visible !important;
+            pointer-events: auto !important;
+            max-width: 320px !important;
+            padding: 10px 14px !important;
+            background: #fff !important;
+            color: #000 !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
+            box-shadow: 4px 4px 0 #000 !important;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif !important;
+            font-size: 13px !important;
+            font-weight: 400 !important;
+            line-height: 1.5 !important;
+            word-break: break-word !important;
+            cursor: pointer !important;
+            transform: translateX(120%) !important;
+            opacity: 0 !important;
+            transition: transform .28s ease, opacity .28s ease !important;
+        }
+        .cnb-toast.cnb-toast--show {
+            transform: translateX(0) !important;
+            opacity: 1 !important;
+        }
+        .cnb-toast.cnb-toast--hide {
+            transform: translateX(120%) !important;
+            opacity: 0 !important;
+        }
+        .cnb-toast .cnb-toast-title {
+            font-weight: 700 !important;
+        }
+        .cnb-toast a.cnb-toast-link {
+            color: #000 !important;
+            text-decoration: underline !important;
+            cursor: pointer !important;
+        }
+        .cnb-toast a.cnb-toast-link:hover {
+            color: #666 !important;
+        }
     `);
 
     /* 强制隔离并统一控件样式，避免继承站点样式 - 扁平黑白配色 */
@@ -4849,6 +4897,71 @@ ${md}`, 'text');
         }
     }
 
+    // 右下角结果提示：显示 10 秒后向右滑出消失
+    //   opts = { success, title, url, message }
+    //   - success 为 true 时显示「完成！」+ 标题（超链接，最多显示 15 字）
+    //   - 否则显示「失败」+ 错误信息
+    function showResultToast(opts) {
+        const o = opts || {};
+        try { console.log('[CNB Issue] 显示结果提示:', o.success ? '成功' : '失败', o.title || o.message || ''); } catch (_) {}
+        try {
+            const old = document.querySelector('.cnb-toast');
+            if (old) old.remove();
+        } catch (_) {}
+
+        const el = document.createElement('div');
+        el.className = 'cnb-toast';
+
+        const prefix = document.createElement('span');
+        prefix.className = 'cnb-toast-title';
+        prefix.textContent = o.success ? '完成！' : '失败';
+        el.appendChild(prefix);
+
+        if (o.success) {
+            const t = String(o.title || '').trim();
+            if (t) {
+                const shown = t.length > 15 ? t.slice(0, 15) + '…' : t;
+                if (o.url) {
+                    const a = document.createElement('a');
+                    a.className = 'cnb-toast-link';
+                    a.textContent = ' ' + shown;
+                    a.href = o.url;
+                    a.target = '_blank';
+                    a.rel = 'noopener noreferrer';
+                    el.appendChild(a);
+                } else {
+                    const span = document.createElement('span');
+                    span.textContent = ' ' + shown;
+                    el.appendChild(span);
+                }
+            }
+        } else if (o.message) {
+            const span = document.createElement('span');
+            span.textContent = '：' + String(o.message);
+            el.appendChild(span);
+        }
+
+        document.body.appendChild(el);
+        try { requestAnimationFrame(() => el.classList.add('cnb-toast--show')); }
+        catch (_) { el.classList.add('cnb-toast--show'); }
+
+        let removed = false;
+        const dismiss = () => {
+            if (removed) return;
+            removed = true;
+            el.classList.remove('cnb-toast--show');
+            el.classList.add('cnb-toast--hide');
+            setTimeout(() => { try { el.remove(); } catch (_) {} }, 320);
+        };
+
+        const timer = setTimeout(dismiss, 10000);
+        el.addEventListener('click', (e) => {
+            if (e.target && e.target.tagName === 'A') return; // 点击链接正常跳转
+            clearTimeout(timer);
+            dismiss();
+        });
+    }
+
     // 解析响应体（json / blob / text）
     function parseApiResponse(response, responseType) {
         if (responseType === 'blob' || responseType === 'arraybuffer') return response.response;
@@ -4973,14 +5086,23 @@ ${md}`, 'text');
         }, function(err, respObj) {
             if (err) {
                 notifyUser(`创建失败: ${err.message}`, 5000);
+                showResultToast({ success: false, message: err.message });
                 if (typeof callback === 'function') callback(false);
                 return;
             }
 
             // 解析返回，取 issueId（兼容不同字段）
             const issueId = respObj?.id ?? respObj?.number ?? respObj?.iid ?? respObj?.issue_id;
+
+            // Issue 已创建：立即提示（即使后续设置标签失败也照常提示）
+            notifyUser('Issue创建成功！');
+            showResultToast({
+                success: true,
+                title: title,
+                url: (issueId != null) ? `${CONFIG.webBase}/${CONFIG.repoPath}/-/issues/${issueId}` : ''
+            });
+
             const notifySuccess = () => {
-                notifyUser('Issue创建成功！');
                 if (callback) callback(true, issueId);
             };
 
@@ -5088,12 +5210,18 @@ ${md}`, 'text');
         }, function(err) {
             if (err) {
                 notifyUser(`更新失败：${err.message}`, 5000);
+                showResultToast({ success: false, message: err.message });
                 if (typeof callback === 'function') callback(false);
                 return;
             }
             // Issue更新成功，处理标签
             handleLabels(() => {
                 notifyUser(`Issue #${issueNumber} 更新成功！`);
+                showResultToast({
+                    success: true,
+                    title: (data && data.title) ? data.title : ('#' + issueNumber),
+                    url: (issueNumber != null) ? `${CONFIG.webBase}/${CONFIG.repoPath}/-/issues/${issueNumber}` : ''
+                });
                 if (typeof callback === 'function') callback(true);
             });
         });
@@ -5140,9 +5268,15 @@ ${md}`, 'text');
         }, function(err) {
             if (err) {
                 notifyUser(`添加评论失败：${err.message}`, 5000);
+                showResultToast({ success: false, message: err.message });
                 if (typeof callback === 'function') callback(false);
             } else {
                 notifyUser('评论添加成功！');
+                showResultToast({
+                    success: true,
+                    title: '#' + issueNumber,
+                    url: (issueNumber != null) ? `${CONFIG.webBase}/${CONFIG.repoPath}/-/issues/${issueNumber}` : ''
+                });
                 if (typeof callback === 'function') callback(true);
             }
         });
