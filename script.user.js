@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.6.2
+// @version      1.6.3
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -14,6 +14,8 @@
 // @grant        GM_setValue
 // @connect      api.cnb.cool
 // @connect      cnb.cool
+// @connect      api.cnb.build
+// @connect      cnb.build
 // @connect      *
 // @connect      weibo.com
 // @connect      *.weibo.com
@@ -43,6 +45,7 @@
     }
     let __CNB_CLIP_DIALOG = null;
     let __CNB_SETTINGS_DIALOG = null, __CNB_SETTINGS_OVERLAY = null;
+    let __CNB_SETTINGS_REFRESH = null;
     let __CNB_ISSUE_DIALOG = null, __CNB_ISSUE_OVERLAY = null;
     let __CNB_CREATE_DIALOG = null, __CNB_CREATE_OVERLAY = null;
     let __CNB_MO = null;
@@ -90,13 +93,80 @@
 
     // 配置信息
     const CONFIG = {
-        apiBase: 'https://api.cnb.cool',
+        region: 'cn',                       // 'cn' = 国内, 'abroad' = 国外
+        apiBase: 'https://api.cnb.cool',    // 由当前区域决定
+        webBase: 'https://cnb.cool',        // 由当前区域决定
         repoPath: '',
         accessToken: '',
         issueEndpoint: '/-/issues',
         uploadEnabled: true,
         uploadFilesEnabled: true
     };
+
+    // 服务器区域：国内 / 国外，各自使用独立的 API、站点与仓库/令牌配置
+    const REGIONS = {
+        cn: {
+            label: '国内',
+            apiBase: 'https://api.cnb.cool',
+            webBase: 'https://cnb.cool',
+            repoKey: 'repoPath',
+            tokenKey: 'accessToken',
+            clipKey: 'cnbClipboardIssue',
+            favKey: 'cnbFavIssue',
+            clipTitlesKey: 'cnbClipboardIssueTitles'
+        },
+        abroad: {
+            label: '国外',
+            apiBase: 'https://api.cnb.build',
+            webBase: 'https://cnb.build',
+            repoKey: 'repoPathAbroad',
+            tokenKey: 'accessTokenAbroad',
+            clipKey: 'cnbClipboardIssueAbroad',
+            favKey: 'cnbFavIssueAbroad',
+            clipTitlesKey: 'cnbClipboardIssueTitlesAbroad'
+        }
+    };
+
+    function currentRegion() {
+        return REGIONS[CONFIG.region] || REGIONS.cn;
+    }
+
+    function regionLabel() {
+        return currentRegion().label;
+    }
+
+    // 应用区域：切换 API/站点地址，并读取该区域对应的仓库与令牌
+    function applyRegion(region, persist) {
+        const key = REGIONS[region] ? region : 'cn';
+        const r = REGIONS[key];
+        CONFIG.region = key;
+        CONFIG.apiBase = r.apiBase;
+        CONFIG.webBase = r.webBase;
+        try {
+            if (typeof GM_getValue === 'function') {
+                CONFIG.repoPath = GM_getValue(r.repoKey, '') || '';
+                CONFIG.accessToken = GM_getValue(r.tokenKey, '') || '';
+            }
+        } catch (_) {}
+        if (persist && typeof GM_setValue === 'function') {
+            try { GM_setValue('cnbRegion', key); } catch (_) {}
+        }
+    }
+
+    // 切换区域：国内 <-> 国外
+    function switchRegion() {
+        const next = (CONFIG.region === 'abroad') ? 'cn' : 'abroad';
+        applyRegion(next, true);
+        try {
+            const btn = document.getElementById('cnb-btn-region');
+            if (btn) btn.textContent = regionLabel();
+        } catch (_) {}
+        // 同步刷新设置弹窗（仓库/令牌/标签/剪贴板/收藏）与 Dock 剪贴板按钮
+        try { if (__CNB_SETTINGS_REFRESH) __CNB_SETTINGS_REFRESH(); } catch (_) {}
+        try { syncDockClipboardButton(); } catch (_) {}
+        try { notifyUser('已切换到' + regionLabel() + '服务器', 2000); } catch (_) {}
+        return next;
+    }
     let SAVED_TAGS = [];
     // 选择模式快捷键（可在设置中修改），规范格式如：Shift+E
     let START_HOTKEY = 'Shift+E';
@@ -565,6 +635,28 @@
             color: #666 !important;
             text-decoration: underline !important;
         }
+        /* 设置页标题右侧：区域切换开关 */
+        .cnb-issue-dialog .cnb-region-toggle {
+            display: inline-flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            height: 22px !important;
+            padding: 0 8px !important;
+            box-sizing: border-box !important;
+            border: 2px solid #000 !important;
+            border-radius: 0 !important;
+            background: #000 !important;
+            color: #fff !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            line-height: 1 !important;
+            cursor: pointer !important;
+            transition: all 0.1s ease !important;
+        }
+        .cnb-issue-dialog .cnb-region-toggle:hover {
+            background: #fff !important;
+            color: #000 !important;
+        }
 
         /* 图片上传开关容器 */
         .cnb-image-upload-toggle {
@@ -996,6 +1088,32 @@
         }
     }
 
+    // 根据当前区域配置的“剪贴板位置”同步 Dock 上的“剪贴板”按钮
+    function syncDockClipboardButton() {
+        const dock = document.querySelector('.cnb-dock');
+        if (!dock) return;
+        let clipIssue = '';
+        try {
+            if (typeof GM_getValue === 'function') clipIssue = String(GM_getValue(currentRegion().clipKey, '') || '').trim();
+        } catch (_) {}
+        let btn = dock.querySelector('#cnb-btn-clipboard');
+        if (clipIssue) {
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.id = 'cnb-btn-clipboard';
+                btn.className = 'cnb-dock-btn';
+                btn.textContent = '剪贴板';
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (typeof openClipboardWindow === 'function') openClipboardWindow();
+                });
+                dock.appendChild(btn);
+            }
+        } else if (btn) {
+            btn.remove();
+        }
+    }
+
     // 创建左侧 Dock（去除拖动，仅点击）
     function createFloatingButton() {
         const dock = document.createElement('div');
@@ -1028,24 +1146,10 @@
         });
         dock.appendChild(btnList);
 
-        // 剪贴板（根据设置的"剪贴板位置"是否为空来决定是否显示）
-        let __cnbClipCfg = '';
-        try { if (typeof GM_getValue === 'function') { const v = GM_getValue('cnbClipboardIssue', ''); __cnbClipCfg = String(v || '').trim(); } } catch (_) {}
-        if (__cnbClipCfg) {
-            const btnClipboard = document.createElement('button');
-            btnClipboard.id = 'cnb-btn-clipboard';
-            btnClipboard.className = 'cnb-dock-btn';
-            btnClipboard.textContent = '剪贴板';
-            btnClipboard.addEventListener('click', (e) => {
-                e.preventDefault();
-                if (typeof openClipboardWindow === 'function') {
-                    openClipboardWindow();
-                }
-            });
-            dock.appendChild(btnClipboard);
-        }
-
         document.body.appendChild(dock);
+
+        // 剪贴板按钮：根据当前区域的“剪贴板位置”决定是否显示
+        syncDockClipboardButton();
 
         // 仅当鼠标真正移动到浏览器最左侧极窄边缘（且位于 dock 垂直范围内）时才显示 dock。
         // 使用 mousemove 而非给热区绑定 mouseenter：热区只要光标在其上方就会触发，
@@ -1463,7 +1567,7 @@ ${escapeHtml(selectedContent)}</textarea>
             let favConfig = '';
             try {
                 if (typeof GM_getValue === 'function') {
-                    favConfig = GM_getValue('cnbFavIssue', '') || '';
+                    favConfig = GM_getValue(currentRegion().favKey, '') || '';
                 }
             } catch (_) {}
 
@@ -2269,7 +2373,7 @@ ${escapeHtml(selectedContent)}</textarea>
             let favConfig = '';
             try {
                 if (typeof GM_getValue === 'function') {
-                    favConfig = GM_getValue('cnbFavIssue', '') || '';
+                    favConfig = GM_getValue(currentRegion().favKey, '') || '';
                 }
             } catch (_) {}
 
@@ -3069,9 +3173,9 @@ ${escapeHtml(selectedContent)}</textarea>
         let currentFavIssue = '';
         try {
             if (typeof GM_getValue === 'function') {
-                const v = GM_getValue('cnbClipboardIssue', '');
+                const v = GM_getValue(currentRegion().clipKey, '');
                 currentClipIssue = (v == null) ? '' : String(v);
-                const f = GM_getValue('cnbFavIssue', '');
+                const f = GM_getValue(currentRegion().favKey, '');
                 currentFavIssue = (f == null) ? '' : String(f);
             }
         } catch (_) {}
@@ -3080,6 +3184,7 @@ ${escapeHtml(selectedContent)}</textarea>
             <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:10px; top:10px; border:none; background:transparent; color:#000; font-size:20px; line-height:1; cursor:pointer; font-weight:700;">×</button>
             <div class="cnb-settings-header">
                 <h3>CNB 设置</h3>
+                <button type="button" id="cnb-btn-region" class="cnb-region-toggle" title="切换 CNB 服务器（国内 / 国外）">${regionLabel()}</button>
                 <div class="cnb-settings-links-row">
                     <a class="cnb-link-btn" href="https://github.com/IIIStudio/CNBIssue" target="_blank" rel="noopener noreferrer">GitHub</a>
                     <a class="cnb-link-btn" href="https://cnb.cool/IIIStudio/Code/Greasemonkey/CNBIssue" target="_blank" rel="noopener noreferrer">CNB</a>
@@ -3137,11 +3242,20 @@ ${escapeHtml(selectedContent)}</textarea>
         const clipIssueInput = dialog.querySelector('#cnb-setting-clip-issue');
         const favIssueInput = dialog.querySelector('#cnb-setting-fav-issue');
 
+        // 标题右侧：区域切换开关（国内 / 国外）
+        const regionToggle = dialog.querySelector('#cnb-btn-region');
+        if (regionToggle) {
+            regionToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                switchRegion();
+            });
+        }
+
         // 评论收藏即时保存
         if (favIssueInput) {
             favIssueInput.addEventListener('input', () => {
                 const favIssue = favIssueInput.value.trim();
-                if (typeof GM_setValue === 'function') GM_setValue('cnbFavIssue', favIssue);
+                if (typeof GM_setValue === 'function') GM_setValue(currentRegion().favKey, favIssue);
             });
         }
 
@@ -3151,7 +3265,7 @@ ${escapeHtml(selectedContent)}</textarea>
                 const repo = repoInput.value.trim();
                 if (repo) {
                     CONFIG.repoPath = repo;
-                    if (typeof GM_setValue === 'function') GM_setValue('repoPath', repo);
+                    if (typeof GM_setValue === 'function') GM_setValue(currentRegion().repoKey, repo);
                 }
             });
         }
@@ -3162,7 +3276,7 @@ ${escapeHtml(selectedContent)}</textarea>
                 const token = tokenInput.value.trim();
                 if (token) {
                     CONFIG.accessToken = token;
-                    if (typeof GM_setValue === 'function') GM_setValue('accessToken', token);
+                    if (typeof GM_setValue === 'function') GM_setValue(currentRegion().tokenKey, token);
                 }
             });
         }
@@ -3171,29 +3285,9 @@ ${escapeHtml(selectedContent)}</textarea>
         if (clipIssueInput) {
             const updateClipIssue = () => {
                 const clipIssue = clipIssueInput.value.trim();
-                if (typeof GM_setValue === 'function') GM_setValue('cnbClipboardIssue', clipIssue);
+                if (typeof GM_setValue === 'function') GM_setValue(currentRegion().clipKey, clipIssue);
                 // 即时生效：根据是否有值来动态增删"剪贴板"按钮
-                const dock = document.querySelector('.cnb-dock');
-                if (dock) {
-                    let btn = dock.querySelector('#cnb-btn-clipboard');
-                    if (clipIssue) {
-                        if (!btn) {
-                            const btnClipboard = document.createElement('button');
-                            btnClipboard.id = 'cnb-btn-clipboard';
-                            btnClipboard.className = 'cnb-dock-btn';
-                            btnClipboard.textContent = '剪贴板';
-                            btnClipboard.addEventListener('click', (e) => {
-                                e.preventDefault();
-                                if (typeof openClipboardWindow === 'function') {
-                                    openClipboardWindow();
-                                }
-                            });
-                            dock.appendChild(btnClipboard);
-                        }
-                    } else {
-                        if (btn) btn.remove();
-                    }
-                }
+                syncDockClipboardButton();
             };
             clipIssueInput.addEventListener('input', updateClipIssue);
         }
@@ -3393,12 +3487,33 @@ ${escapeHtml(selectedContent)}</textarea>
         const token = dialog.querySelector('#cnb-setting-token').value.trim();
         fetchRepoTags(repo, token);
 
+        // 供区域切换调用：同步该区域的仓库/令牌/剪贴板/收藏，并按新仓库重新拉取标签
+        __CNB_SETTINGS_REFRESH = () => {
+            if (repoInput) repoInput.value = CONFIG.repoPath || '';
+            if (tokenInput) tokenInput.value = CONFIG.accessToken || '';
+            if (clipIssueInput) {
+                clipIssueInput.value = (typeof GM_getValue === 'function')
+                    ? String(GM_getValue(currentRegion().clipKey, '') || '') : '';
+            }
+            if (favIssueInput) {
+                favIssueInput.value = (typeof GM_getValue === 'function')
+                    ? String(GM_getValue(currentRegion().favKey, '') || '') : '';
+            }
+            if (CONFIG.repoPath && CONFIG.accessToken) {
+                fetchRepoTags(CONFIG.repoPath, CONFIG.accessToken);
+            } else {
+                SAVED_TAGS = [];
+                renderTagsList();
+            }
+        };
+
 
         const close = () => {
             if (document.body.contains(overlay)) document.body.removeChild(overlay);
             if (document.body.contains(dialog)) document.body.removeChild(dialog);
             __CNB_SETTINGS_OVERLAY = null;
             __CNB_SETTINGS_DIALOG = null;
+            __CNB_SETTINGS_REFRESH = null;
         };
 
         const closeBtn = dialog.querySelector('.cnb-dialog-close');
@@ -3591,7 +3706,7 @@ ${escapeHtml(selectedContent)}</textarea>
                 prefix.style.fontWeight = '700';
 
                 const a = document.createElement('a');
-                a.href = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${number}`;
+                a.href = `${CONFIG.webBase}/${CONFIG.repoPath}/-/issues/${number}`;
                 a.target = '_blank';
                 a.rel = 'noopener noreferrer';
                 const fullTitle = String(title || '');
@@ -4276,7 +4391,7 @@ ${md}`, 'text');
         let __clipWinPos = { left: null, top: null };
         try {
             if (typeof GM_getValue === 'function') {
-                const v = GM_getValue('cnbClipboardIssue', '');
+                const v = GM_getValue(currentRegion().clipKey, '');
                 __clipIssueNum = String(v || '').trim();
                 const pos = GM_getValue('cnbClipboardWindowPos', '');
                 if (pos) {
@@ -4348,10 +4463,10 @@ ${md}`, 'text');
             // 保存 Issue 标题到本地
             try {
                 if (typeof GM_getValue === 'function' && typeof GM_setValue === 'function') {
-                    const titles = GM_getValue('cnbClipboardIssueTitles', '{}');
+                    const titles = GM_getValue(currentRegion().clipTitlesKey, '{}');
                     const titleMap = typeof titles === 'object' ? titles : {};
                     titleMap[String(issueNum)] = t;
-                    GM_setValue('cnbClipboardIssueTitles', titleMap);
+                    GM_setValue(currentRegion().clipTitlesKey, titleMap);
                 }
             } catch (_) {}
 
@@ -4362,9 +4477,9 @@ ${md}`, 'text');
                 issueUrl = data.html_url;
             } else if (data && data.iid) {
                 // 如果 API 没有返回 URL，则手动构建
-                issueUrl = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${data.iid}`;
+                issueUrl = `${CONFIG.webBase}/${CONFIG.repoPath}/-/issues/${data.iid}`;
             } else if (issueNum) {
-                issueUrl = `https://cnb.cool/${CONFIG.repoPath}/-/issues/${issueNum}`;
+                issueUrl = `${CONFIG.webBase}/${CONFIG.repoPath}/-/issues/${issueNum}`;
             }
             if (titleEl) {
                 if (issueUrl) {
@@ -4644,7 +4759,7 @@ ${md}`, 'text');
             let issueTitles = {};
             try {
                 if (typeof GM_getValue === 'function') {
-                    const titles = GM_getValue('cnbClipboardIssueTitles', '{}');
+                    const titles = GM_getValue(currentRegion().clipTitlesKey, '{}');
                     issueTitles = typeof titles === 'object' ? titles : {};
                 }
             } catch (_) {}
@@ -5414,7 +5529,7 @@ ${md}`, 'text');
         const p = uploadInfo.assets?.path || uploadInfo.path;
         if (p) {
             if (/^https?:\/\//.test(p)) return p;
-            return p.includes(CONFIG.repoPath) ? `https://cnb.cool${p}` : `https://cnb.cool/${CONFIG.repoPath}${p}`;
+            return p.includes(CONFIG.repoPath) ? `${CONFIG.webBase}${p}` : `${CONFIG.webBase}/${CONFIG.repoPath}${p}`;
         }
         return null;
     }
@@ -5513,16 +5628,15 @@ ${md}`, 'text');
         try {
             if (typeof GM_getValue !== 'function') return;
 
-            const repo = GM_getValue('repoPath', CONFIG.repoPath);
-            const token = GM_getValue('accessToken', CONFIG.accessToken);
+            // 先恢复已保存的区域，并按该区域读取对应的仓库路径与访问令牌
+            applyRegion(GM_getValue('cnbRegion', CONFIG.region || 'cn'), false);
+
             const tags = GM_getValue('cnbTags', []);
             const hk = GM_getValue('cnbHotkey', START_HOTKEY);
             const hkEnabled = GM_getValue('cnbHotkeyEnabled', HOTKEY_ENABLED);
             const uploadEnabled = GM_getValue('cnbUploadEnabled', true);
             const uploadFilesEnabled = GM_getValue('cnbUploadFilesEnabled', true);
 
-            if (repo) CONFIG.repoPath = repo;
-            if (token) CONFIG.accessToken = token;
             if (Array.isArray(tags)) SAVED_TAGS = tags;
             if (hk) START_HOTKEY = normalizeHotkeyString(hk);
             HOTKEY_ENABLED = !!hkEnabled;
