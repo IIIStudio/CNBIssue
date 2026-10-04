@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.6.1
+// @version      1.6.2
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -23,6 +23,9 @@
 // @connect      tva*.sinaimg.cn
 // @connect      wx*.sinaimg.cn
 // @connect      hb*.sinaimg.cn
+// @connect      cdn3.ldstatic.com
+// @connect      *.ldstatic.com
+// @connect      ldstatic.com
 // @license MIT
 // ==/UserScript==
 
@@ -5100,63 +5103,100 @@ ${md}`, 'text');
         uploadBlobToOss(uploadInfo, fileData, '附件', callback);
     }
 
-    // 3. 获取图片数据（从 URL 或 base64）
-    function fetchImageData(imageUrl, callback) {
-        // 如果是 base64 数据
-        if (imageUrl.startsWith('data:')) {
-            const matches = imageUrl.match(/^data:([^;]+);base64,(.+)$/);
-            if (matches) {
-                const mimeType = matches[1];
-                const base64Data = matches[2];
-                try {
-                    const byteString = atob(base64Data);
-                    const ab = new ArrayBuffer(byteString.length);
-                    const ia = new Uint8Array(ab);
-                    for (let i = 0; i < byteString.length; i++) {
-                        ia[i] = byteString.charCodeAt(i);
-                    }
-                    const blob = new Blob([ab], { type: mimeType });
-                    if (callback) callback(blob, null);
-                    return;
-                } catch (e) {
-                    if (callback) callback(null, 'base64 解析失败');
-                    return;
-                }
+    // 3. 解析 base64 数据为 Blob（返回 null 表示不是 base64 或解析失败）
+    function decodeBase64Blob(dataUrl) {
+        const matches = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) return null;
+        try {
+            const byteString = atob(matches[2]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
             }
+            return new Blob([ab], { type: matches[1] });
+        } catch (_) {
+            return null;
         }
-
-        // 通过 URL 获取图片 - 使用 GM_xmlhttpRequest 绕过 CORS
-        GM_xmlhttpRequest({
-            method: 'GET',
-            url: imageUrl,
-            headers: { 'Referer': location.href },
-            responseType: 'blob',
-            onload: function(response) {
-                if (response.status >= 200 && response.status < 300) {
-                    const blob = response.response;
-                    if (blob) {
-                        if (callback) callback(blob, null);
-                    } else {
-                        if (callback) callback(null, '获取图片数据失败');
-                    }
-                } else {
-                    if (callback) callback(null, `HTTP ${response.status}`);
-                }
-            },
-            onerror: function() {
-                if (callback) callback(null, '获取图片失败');
-            }
-        });
     }
 
-    // 3.1 下载远程文件（附件）数据：同源优先用 fetch 携带 Cookie/Referer，失败再回退 GM_xmlhttpRequest
+    // 计算下载时的 Referer：使用目标资源自身的源，兼容防盗链站点
+    function refererForUrl(url) {
+        try {
+            return new URL(url, location.href).origin + '/';
+        } catch (_) {
+            return location.href;
+        }
+    }
+
+    // 3.1 下载远程二进制（图片 / 附件通用）
+    //   - 用 GM_xmlhttpRequest 绕过 CORS，并自动携带目标域 Cookie（保证登录态）
+    //   - 部分站点（如 linux.do 的 /uploads/short-url）会 302 跳到 CDN 直链，
+    //     而 Tampermonkey 在跨域跳转后会丢弃自定义 Referer，触发 CDN 防盗链返回 403。
+    //     这里对跳转后的最终地址带 Referer 直连重试一次，避免因丢失登录/来源信息而失败。
+    function downloadRemoteBinary(url, callback) {
+        if (!url) {
+            if (callback) callback(null, '无效的下载地址');
+            return;
+        }
+
+        const referer = refererForUrl(url);
+
+        const request = (target, isRetry) => {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: target,
+                headers: { 'Referer': referer },
+                responseType: 'blob',
+                anonymous: false, // 显式携带 Cookie，确保登录态可用
+                onload: function(response) {
+                    if (response.status >= 200 && response.status < 300 && response.response) {
+                        if (callback) callback(response.response, null);
+                        return;
+                    }
+
+                    const finalUrl = response.finalUrl;
+                    // 跨域跳转导致 Referer 丢失：直连最终地址并补齐 Referer 重试一次
+                    if (!isRetry && finalUrl && finalUrl !== target) {
+                        console.warn('[CNB Issue] 下载被拦截（HTTP ' + response.status + '），尝试直连跳转地址重试:', finalUrl);
+                        request(finalUrl, true);
+                        return;
+                    }
+
+                    let msg = `HTTP ${response.status}`;
+                    if (response.status === 401 || response.status === 403) {
+                        msg += '（下载需要登录，或资源存在防盗链保护）';
+                    }
+                    if (callback) callback(null, msg);
+                },
+                onerror: function() {
+                    if (callback) callback(null, '下载失败（网络错误）');
+                }
+            });
+        };
+
+        request(url, false);
+    }
+
+    // 3.2 获取图片数据（从 URL 或 base64）
+    function fetchImageData(imageUrl, callback) {
+        if (imageUrl.startsWith('data:')) {
+            const blob = decodeBase64Blob(imageUrl);
+            if (callback) callback(blob, blob ? null : 'base64 解析失败');
+            return;
+        }
+        downloadRemoteBinary(imageUrl, callback);
+    }
+
+    // 3.3 下载远程文件（附件）数据：同源优先用 fetch 携带登录 Cookie，失败再回退 GM_xmlhttpRequest
     function fetchRemoteFileData(fileUrl, callback) {
         if (!fileUrl) {
             if (callback) callback(null, '无效的文件地址');
             return;
         }
         if (fileUrl.startsWith('data:')) {
-            fetchImageData(fileUrl, callback);
+            const blob = decodeBase64Blob(fileUrl);
+            if (callback) callback(blob, blob ? null : 'base64 解析失败');
             return;
         }
 
@@ -5165,8 +5205,12 @@ ${md}`, 'text');
             sameOrigin = new URL(fileUrl, location.href).origin === location.origin;
         } catch (_) {}
 
+        // 同源请求用 credentials: 'same-origin'：
+        //   - 初始同源请求（如 linux.do 的 /uploads/short-url）会携带登录 Cookie，满足“需登录”的下载
+        //   - 若该请求 302 跳到跨域 CDN 直链，跨域这一跳不再带凭证，
+        //     可避免 CDN 返回空 Access-Control-Allow-Credentials 时与 credentials: 'include' 冲突被 CORS 拦截
         if (sameOrigin && typeof fetch === 'function') {
-            fetch(fileUrl, { credentials: 'include' })
+            fetch(fileUrl, { credentials: 'same-origin', redirect: 'follow' })
                 .then(res => {
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     return res.blob();
@@ -5175,18 +5219,16 @@ ${md}`, 'text');
                     if (blob && blob.size > 0) {
                         if (callback) callback(blob, null);
                     } else {
-                        console.warn('[CNB Issue] 同源 fetch 下载为空，回退 GM_xmlhttpRequest:', fileUrl);
-                        fetchImageData(fileUrl, callback);
+                        downloadRemoteBinary(fileUrl, callback);
                     }
                 })
-                .catch((e) => {
-                    console.warn('[CNB Issue] 同源 fetch 下载失败，回退 GM_xmlhttpRequest:', fileUrl, e && e.message);
-                    fetchImageData(fileUrl, callback);
+                .catch(() => {
+                    downloadRemoteBinary(fileUrl, callback);
                 });
             return;
         }
 
-        fetchImageData(fileUrl, callback);
+        downloadRemoteBinary(fileUrl, callback);
     }
 
     // 4. 从Markdown内容中提取图片链接
