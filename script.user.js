@@ -3625,7 +3625,6 @@ ${escapeHtml(selectedContent)}</textarea>
             <h3>Issue 列表</h3>
             <div id="cnb-issue-filter" class="cnb-issue-filter" style="margin:4px 0;"></div>
             <div id="cnb-issue-list" style="height:55vh; overflow:auto; border:2px solid #000; border-radius:0;"></div>
-            <div id="cnb-issue-pagination" style="margin-top:6px;display:flex;justify-content:center;gap:6px;"></div>
         `;
 
         // 固定对话框尺寸，防止点击筛选按钮时窗口抖动
@@ -3685,43 +3684,69 @@ ${escapeHtml(selectedContent)}</textarea>
         // 初始加载中
         listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载中...</div>`;
 
-        // 分页相关变量
-        let currentPage = 1;
+        // 无限滚动相关状态
         const pageSize = 50;
-        let allItems = [];
+        let nextPage = 1;         // 下一个待加载页码
+        let hasMore = true;       // 是否还有更多数据
+        let loading = false;      // 是否正在加载
+        let allItems = [];        // 已加载的全部 Issue
         let currentFilterLabel = null;
 
-        function loadIssues(page) {
-            listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载中...</div>`;
+        // 加载第 page 页并追加到已加载列表
+        function loadPage(page) {
+            if (loading || !hasMore) return;
+            loading = true;
+
+            const isFirst = page === 1;
+            if (isFirst) listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载中...</div>`;
 
             apiRequest({
                 method: 'GET',
                 path: `${CONFIG.issueEndpoint}?page=${page}&page_size=${pageSize}&state=closed`,
                 accept: 'application/json'
             }, function(err, data) {
+                loading = false;
                 if (err) {
-                    listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载失败</div>`;
+                    if (isFirst) {
+                        listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">加载失败</div>`;
+                    } else {
+                        notifyUser('加载下一页失败：' + err.message, 4000);
+                    }
                     return;
                 }
                 const items = Array.isArray(data) ? data : (Array.isArray(data && data.items) ? data.items : []);
 
-                if (!items.length) {
+                allItems = isFirst ? items : allItems.concat(items);
+                hasMore = items.length === pageSize;  // 满一页说明可能还有下一页
+                nextPage = page + 1;
+
+                if (!allItems.length) {
                     listEl.innerHTML = `<div style="padding:12px;color:#000;font-weight:600;">暂无数据</div>`;
                     return;
                 }
 
-                allItems = items;
-
-                // 返回数量等于 pageSize 说明可能还有下一页
-                const hasMore = items.length === pageSize;
-
-                currentPage = page;
-                renderList(currentFilterLabel);
-                renderPagination(hasMore);
+                renderList(currentFilterLabel, true);
+                maybeAutoLoad();
             });
         }
 
-        function renderList(filterLabel) {
+        // 内容不足一屏且还有更多时自动继续加载，保证标签筛选也能一次展示完整
+        function maybeAutoLoad() {
+            if (hasMore && !loading && listEl.scrollHeight <= listEl.clientHeight + 4) {
+                loadPage(nextPage);
+            }
+        }
+
+        // 滚动到底部附近时加载下一页
+        listEl.addEventListener('scroll', () => {
+            if (!hasMore || loading) return;
+            if (listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 40) {
+                loadPage(nextPage);
+            }
+        });
+
+        function renderList(filterLabel, keepScroll) {
+            const prevScrollTop = listEl.scrollTop;
             const filterEl = dialog.querySelector('#cnb-issue-filter');
             // 行内样式强制为 flex 并设置 4px 间距，避免被站点覆盖
             if (filterEl) {
@@ -3853,39 +3878,7 @@ ${md}`, 'text');
 
             listEl.innerHTML = '';
             listEl.appendChild(frag);
-        }
-
-        function renderPagination(hasMore) {
-            const paginationEl = dialog.querySelector('#cnb-issue-pagination');
-            if (!paginationEl) return;
-
-            paginationEl.innerHTML = '';
-
-            // 第一页不显示"上一页"按钮
-            if (currentPage > 1) {
-                const prevBtn = document.createElement('button');
-                prevBtn.textContent = '上一页';
-                prevBtn.style.cssText = 'padding:2px 6px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
-                prevBtn.addEventListener('click', () => {
-                    if (currentPage > 1) {
-                        currentPage--;
-                        loadIssues(currentPage);
-                    }
-                });
-                paginationEl.appendChild(prevBtn);
-            }
-
-            // 最后一页不显示"下一页"按钮
-            if (hasMore) {
-                const nextBtn = document.createElement('button');
-                nextBtn.textContent = '下一页';
-                nextBtn.style.cssText = 'padding:2px 6px;font-size:12px;border:2px solid #000;background:#fff;color:#000;font-weight:600;cursor:pointer;';
-                nextBtn.addEventListener('click', () => {
-                    currentPage++;
-                    loadIssues(currentPage);
-                });
-                paginationEl.appendChild(nextBtn);
-            }
+            listEl.scrollTop = keepScroll ? prevScrollTop : 0;
         }
 
         // 渲染筛选按钮
@@ -3899,7 +3892,8 @@ ${md}`, 'text');
             allBtn.addEventListener('click', () => {
                 setActive(allBtn);
                 currentFilterLabel = null;
-                renderList(null);
+                renderList(null, false);
+                maybeAutoLoad();
             });
             filterEl.appendChild(allBtn);
 
@@ -3912,7 +3906,8 @@ ${md}`, 'text');
                 b.addEventListener('click', () => {
                     setActive(b);
                     currentFilterLabel = tag;
-                    renderList(tag);
+                    renderList(tag, false);
+                    maybeAutoLoad();
                 });
                 filterEl.appendChild(b);
             });
@@ -3936,7 +3931,7 @@ ${md}`, 'text');
         }
 
         // 首次加载第一页
-        loadIssues(1);
+        loadPage(1);
 
         document.body.appendChild(overlay);
         document.body.appendChild(dialog);
