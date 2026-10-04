@@ -533,6 +533,39 @@
             padding: 0 !important;
         }
 
+        /* 设置页：标题与项目超链接（并排显示）- 扁平黑白配色 */
+        .cnb-settings-header {
+            display: flex !important;
+            align-items: center !important;
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+            margin: 0 0 6px 0 !important;
+            padding-right: 24px !important;
+        }
+        .cnb-settings-header h3 { margin: 0 !important; }
+        .cnb-settings-links-row {
+            display: inline-flex !important;
+            flex-wrap: wrap !important;
+            gap: 6px !important;
+        }
+        .cnb-issue-dialog a.cnb-link-btn {
+            display: inline !important;
+            padding: 0 !important;
+            border: none !important;
+            background: transparent !important;
+            color: #000 !important;
+            font-size: 12px !important;
+            font-weight: 600 !important;
+            line-height: 1 !important;
+            text-decoration: none !important;
+            cursor: pointer !important;
+            transition: color 0.1s ease !important;
+        }
+        .cnb-issue-dialog a.cnb-link-btn:hover {
+            color: #666 !important;
+            text-decoration: underline !important;
+        }
+
         /* 图片上传开关容器 */
         .cnb-image-upload-toggle {
             display: flex !important;
@@ -3045,7 +3078,14 @@ ${escapeHtml(selectedContent)}</textarea>
 
         dialog.innerHTML = `
             <button class="cnb-dialog-close" title="关闭" style="position:absolute; right:10px; top:10px; border:none; background:transparent; color:#000; font-size:20px; line-height:1; cursor:pointer; font-weight:700;">×</button>
-            <h3>CNB 设置</h3>
+            <div class="cnb-settings-header">
+                <h3>CNB 设置</h3>
+                <div class="cnb-settings-links-row">
+                    <a class="cnb-link-btn" href="https://github.com/IIIStudio/CNBIssue" target="_blank" rel="noopener noreferrer">GitHub</a>
+                    <a class="cnb-link-btn" href="https://cnb.cool/IIIStudio/Code/Greasemonkey/CNBIssue" target="_blank" rel="noopener noreferrer">CNB</a>
+                    <a class="cnb-link-btn" href="https://scriptcat.org/zh-CN/script-show-page/4421" target="_blank" rel="noopener noreferrer">ScriptCat</a>
+                </div>
+            </div>
             <div>
                 <label>仓库路径 (owner/repo):</label>
                 <input class="cnb-control" type="text" id="cnb-setting-repo" placeholder="例如: IIIStudio/Demo" value="${escapeHtml(currentRepo)}">
