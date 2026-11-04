@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.6.3
+// @version      1.6.4
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -5284,6 +5284,18 @@ ${md}`, 'text');
         files: { path: '/-/upload/files', permission: 'repo-notes:rw', label: '附件' }
     };
 
+    // 清理文件名：接口不允许 < > : \ / | ? * % 和连续 `..`；
+    // 且 CNB 会把附件名截短（google_pro_6_12_24.zip -> _24.zip），故主名里的 . - _ 一律去掉
+    function sanitizeFileName(raw) {
+        let name = String(raw == null ? '' : raw);
+        try { name = decodeURIComponent(name); } catch (_) {}
+        name = name.split(/[\\/]/).pop().replace(/[<>:"\\/|?*%\x00-\x1f]/g, '');
+        const dot = name.lastIndexOf('.');
+        const base = (dot > 0 ? name.slice(0, dot) : name).replace(/[._-]+/g, '').trim();
+        const ext = dot > 0 ? name.slice(dot).replace(/[^0-9a-zA-Z.]+/g, '') : '';
+        return (base || 'file').slice(0, 100) + ext;
+    }
+
     // 1. 获取上传凭证（kind: 'imgs' | 'files'）
     function requestAssetUploadToken(kind, fileName, fileSize, callback) {
         const conf = ASSET_UPLOAD_KINDS[kind] || ASSET_UPLOAD_KINDS.imgs;
@@ -5292,9 +5304,10 @@ ${md}`, 'text');
             return;
         }
 
+        const name = sanitizeFileName(fileName);
         const body = (kind === 'files')
-            ? { name: fileName, size: fileSize }
-            : { name: fileName, size: fileSize, ext: {} };
+            ? { name: name, size: fileSize }
+            : { name: name, size: fileSize, ext: {} };
 
         apiRequest({
             method: 'POST',
