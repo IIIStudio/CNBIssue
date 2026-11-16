@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         CNB Issue 网页内容收藏工具
 // @namespace    https://cnb.cool/IIIStudio/Greasemonkey/CNBIssue/
-// @version      1.6.4
+// @version      1.6.5
 // @description  在任意网页上选择页面区域，一键将选中内容从 HTML 转为 Markdown，按"页面信息 + 选择的内容"的格式展示，并可直接通过 CNB 接口创建 Issue。支持链接、图片、代码块/行内代码、标题、列表、表格、引用等常见结构的 Markdown 转换。
 // @author       IIIStudio
 // @match        *://*/*
@@ -4576,6 +4576,11 @@ ${md}`, 'text');
             try {
               if (typeof GM_addStyle === 'function') {
                 addStyleOnce('clipwin-pre-controls', `
+                  /* 控制条必须以代码块自身作为定位参照，否则会跑到窗口右上角 */
+                  .cnb-clipwin-body pre,
+                  .cnb-clipwin-body pre.cnb-pre-collapsed {
+                    position: relative;
+                  }
                   .cnb-pre-collapsed {
                                 max-height: 3.2em; /* 约两行 */
                                 overflow: hidden;
@@ -4597,6 +4602,7 @@ ${md}`, 'text');
                                 display: inline-flex;
                                 align-items: center;
                                 gap: 6px;
+                                z-index: 2;
                               }
                               .cnb-code-controls .cnb-codecopy-inline,
                               .cnb-code-controls .cnb-code-toggle {
